@@ -1,0 +1,16 @@
+= TCGWatcher App - DATA
+
+== Description
+This Repo contains Code to read, map and write the necessary data for the TCGWatcher APP.
+
+
+== Features
+* **SETS:** Reads the names in different languages (currently: en, ger and fr) of all Sets of the TCGDex database. (via local docker running) Merges this data with the CODE from available via the TCGData project.
+* **CARDS:** Reads all relevant Data from the TCGDex database to make usefull search for the card possible.
+
+== Planed Features
+The data will be expanded with more informations about every card and set to make a fine grained search possible,
+
+
+== License
+This project is licensed under the MIT License - see the LICENSE.md file for details.
