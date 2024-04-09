@@ -119,7 +119,9 @@ public class TCGMapperService {
 
   private TCGDexSetDetailsModel getSetByIdAndLang(String id, String lang) {
     var setKey = new SetKey(id, lang);
-    if (setnameCache.containsKey(setKey)) return setnameCache.get(setKey);
+    if (setnameCache.containsKey(setKey)) {
+      return setnameCache.get(setKey);
+    }
 
     var uri = tcgdexuri + "v2/" + lang + "/sets/" + id;
     log.debug("Getting Set with id: {} for lang: {}", id, lang);
@@ -225,8 +227,8 @@ public class TCGMapperService {
                         var tcgDataNamesMap = dataSet.getNames();
                         var watcherNamesMap = watcherSetModel.getNames();
 
-                        return (watcherNamesMap.get("en").compareTo(tcgDataNamesMap.get("en"))
-                            == 0);
+                        return watcherNamesMap.get("en").compareTo(tcgDataNamesMap.get("en"))
+                            == 0;
                       })
                   .findFirst();
           matchingTcgDataSet.ifPresent(
@@ -236,9 +238,15 @@ public class TCGMapperService {
   }
 
   private String mergeName(String name1, String name2, String name3) {
-    if (hasText(name1)) return name1;
-    if (hasText(name2)) return name2;
-    if (hasText(name3)) return name3;
+    if (hasText(name1)) {
+      return name1;
+    }
+    if (hasText(name2)) {
+      return name2;
+    }
+    if (hasText(name3)) {
+      return name3;
+    }
     return "";
   }
 

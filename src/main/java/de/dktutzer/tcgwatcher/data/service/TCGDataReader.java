@@ -14,6 +14,7 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import lombok.RequiredArgsConstructor;
@@ -40,7 +41,7 @@ public class TCGDataReader {
           .series(seriesMap)
           .names(names)
           .build();
-      result.put(set.getId(),tcgWatcherSetModel);
+      result.put(set.getId(), tcgWatcherSetModel);
     });
 
     return result;
@@ -57,7 +58,7 @@ public class TCGDataReader {
         ZipEntry entry = entries.nextElement();
         InputStream stream = zipFile.getInputStream(entry);
 
-        java.util.Scanner s = new java.util.Scanner(stream).useDelimiter("\\A");
+        Scanner s = new Scanner(stream).useDelimiter("\\A");
         String result = s.hasNext() ? s.next() : "";
         System.out.println(result);
         stringBuilder.append(result);
