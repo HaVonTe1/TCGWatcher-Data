@@ -1,6 +1,5 @@
 package de.dktutzer.tcgwatcher.data;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import de.dktutzer.tcgwatcher.data.service.TCGMapperService;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +18,7 @@ public class TcgDataCreatorCommand {
   ) {
 
     try {
-      tcgMapperService.magicStuff();
+      tcgMapperService.readFromSourceAndWriteToJson();
     } catch (IOException e) {
       throw new RuntimeException(e);
     }

@@ -60,7 +60,6 @@ public class TCGDataReader {
 
         Scanner s = new Scanner(stream).useDelimiter("\\A");
         String result = s.hasNext() ? s.next() : "";
-        System.out.println(result);
         stringBuilder.append(result);
         stream.close();
       }

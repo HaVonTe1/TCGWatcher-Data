@@ -2,7 +2,9 @@ package de.dktutzer.tcgwatcher.data.service;
 
 import static org.springframework.util.StringUtils.hasText;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.dktutzer.tcgwatcher.data.data.PokemonCardEntity;
 import de.dktutzer.tcgwatcher.data.data.TCGDexCardDetailsModel;
 import de.dktutzer.tcgwatcher.data.data.TCGDexCardListModel;
 import de.dktutzer.tcgwatcher.data.data.TCGDexSetDetailsModel;
@@ -10,13 +12,18 @@ import de.dktutzer.tcgwatcher.data.data.TCGDexSetDetailsModel.SeriesModel;
 import de.dktutzer.tcgwatcher.data.data.TCGDexSetListModel;
 import de.dktutzer.tcgwatcher.data.data.TCGWatcherPokemonModel;
 import de.dktutzer.tcgwatcher.data.data.TCGWatcherSetModel;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -27,6 +34,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 @Service
@@ -34,11 +42,15 @@ import org.springframework.web.client.RestTemplate;
 @Slf4j
 public class TCGMapperService {
 
+  public static final String CARDS_JSON_FILE = "./output/cardsFromTCGDex.json";
+  public static final String SETS_JSON_FILE = "./output/setsFromTcgDexWithCode.json";
   private final TCGDataReader tcgDataReader;
 
   private final RestTemplate restTemplate;
 
   private final ObjectMapper objectMapper;
+
+  private final QuickSearchCardsSqliteRepository quickSearchCardsSqliteRepository;
 
   private final Map<SetKey, TCGDexSetDetailsModel> setnameCache = new ConcurrentHashMap<>(250);
   @Value("${app.adaptors.tcgdex.baseuri}")
@@ -135,7 +147,7 @@ public class TCGMapperService {
     return dexSetDetailsDto;
   }
 
-  public List<TCGWatcherPokemonModel> magicStuff() throws IOException {
+  public List<TCGWatcherPokemonModel> readFromSourceAndWriteToJson() throws IOException {
     log.info("lets go");
 
     var setsFromTCGDexRaw = readDexSets();
@@ -145,7 +157,7 @@ public class TCGMapperService {
     var setsForTCGWatcherAsList = setsForTCGWatcherMerged.values();
     var setsJson = objectMapper.writeValueAsString(setsForTCGWatcherAsList);
     log.info("Writing sets to file");
-    try (FileWriter writer = new FileWriter("./output/setsFromTcgDexWithCode.json")) {
+    try (FileWriter writer = new FileWriter(SETS_JSON_FILE)) {
       writer.write(setsJson);
     } catch (IOException e) {
       throw new IllegalArgumentException(e);
@@ -200,7 +212,7 @@ public class TCGMapperService {
 
     var cardsJson = objectMapper.writeValueAsString(mappedCards);
     log.debug("Writing cards to file");
-    try (FileWriter writer = new FileWriter("./output/cardsFromTCGDex.json")) {
+    try (FileWriter writer = new FileWriter(CARDS_JSON_FILE)) {
       writer.write(cardsJson);
     } catch (IOException e) {
       throw new IllegalArgumentException(e);
@@ -255,5 +267,40 @@ public class TCGMapperService {
   private static class SetKey {
     private String id;
     private String lang;
+  }
+
+  /*
+  reads the jsons and writes the data in an easy to query datebase
+
+  it would be possible to this without the json step but i am lazy today
+   */
+  public void readFromJsonAndWriteToSqlite() throws IOException {
+
+    var sets = objectMapper.readValue(new File(SETS_JSON_FILE), new TypeReference<ArrayList<TCGWatcherSetModel>>() {});
+    var cards = objectMapper.readValue(new File(CARDS_JSON_FILE), new TypeReference<ArrayList<TCGWatcherPokemonModel>>() {});
+
+    quickSearchCardsSqliteRepository.deleteAll();
+    var id = new AtomicLong(0);
+    var pokemonCardEntities = cards.stream().map(card -> {
+      var pokemonCardEntity = new PokemonCardEntity();
+      pokemonCardEntity.setId(id.getAndIncrement());
+      var setModelOptional = sets.stream().filter(set -> set.getId().equalsIgnoreCase(card.getSetId())).findFirst();
+      String setCode = card.getSetId().toUpperCase(Locale.ROOT);
+      if (setModelOptional.isPresent()) {
+        var code = setModelOptional.get().getCode();
+        if(hasText(code)) {
+          setCode =  code.toUpperCase();
+        }
+      }
+      pokemonCardEntity.setNameDe(String.format("%s (%s %s)", card.getNames().get("de"), setCode, card.getNumber()));
+      pokemonCardEntity.setNameEn(String.format("%s (%s %s)", card.getNames().get("en"), setCode, card.getNumber()));
+      pokemonCardEntity.setNameFr(String.format("%s (%s %s)", card.getNames().get("fr"), setCode, card.getNumber()));
+
+
+      return pokemonCardEntity;
+    }).toList();
+    quickSearchCardsSqliteRepository.saveAll(pokemonCardEntities);
+
+
   }
 }

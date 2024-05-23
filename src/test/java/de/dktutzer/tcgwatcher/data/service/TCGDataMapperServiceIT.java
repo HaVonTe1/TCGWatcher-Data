@@ -12,9 +12,16 @@ class TCGDataMapperServiceIT {
   private TCGMapperService tcgMapperService;
 
   @Test
-  void test1() throws IOException {
+  void testRead() throws IOException {
 
-    tcgMapperService.magicStuff();
+    tcgMapperService.readFromSourceAndWriteToJson();
+
+  }
+
+  @Test
+  void testDB() throws IOException {
+
+    tcgMapperService.readFromJsonAndWriteToSqlite();
 
   }
 }
