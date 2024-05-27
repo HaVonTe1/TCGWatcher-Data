@@ -20,7 +20,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -34,7 +33,6 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 @Service
@@ -288,14 +286,16 @@ public class TCGMapperService {
       String setCode = card.getSetId().toUpperCase(Locale.ROOT);
       if (setModelOptional.isPresent()) {
         var code = setModelOptional.get().getCode();
-        if(hasText(code)) {
-          setCode =  code.toUpperCase();
+        if (hasText(code)) {
+          setCode = code.toUpperCase();
         }
       }
-      pokemonCardEntity.setNameDe(String.format("%s (%s %s)", card.getNames().get("de"), setCode, card.getNumber()));
-      pokemonCardEntity.setNameEn(String.format("%s (%s %s)", card.getNames().get("en"), setCode, card.getNumber()));
-      pokemonCardEntity.setNameFr(String.format("%s (%s %s)", card.getNames().get("fr"), setCode, card.getNumber()));
-
+      var code = String.format("(%s %s)", setCode, card.getNumber());
+      pokemonCardEntity.setNameDe(card.getNames().get("de"));
+      pokemonCardEntity.setNameEn(card.getNames().get("en"));
+      pokemonCardEntity.setNameFr(card.getNames().get("fr"));
+      pokemonCardEntity.setCode(code);
+      pokemonCardEntity.setExternalId(card.getId());
 
       return pokemonCardEntity;
     }).toList();

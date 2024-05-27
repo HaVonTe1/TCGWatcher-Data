@@ -1,6 +1,5 @@
 package de.dktutzer.tcgwatcher.data.data;
 
-import lombok.Builder;
 import lombok.Data;
 
 @Data
