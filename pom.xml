@@ -21,7 +21,7 @@
     <rewrite-maven-plugin.version>5.32.1</rewrite-maven-plugin.version>
     <rewrite-static-analysis.version>1.8.1</rewrite-static-analysis.version>
     <versions-maven-plugin.version>2.16.2</versions-maven-plugin.version>
-    <sqlite-jdbc.version>3.45.3.0</sqlite-jdbc.version>
+    <sqlite-jdbc.version>3.46.0.0</sqlite-jdbc.version>
   </properties>
   <dependencyManagement>
     <dependencies>
