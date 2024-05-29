@@ -9,12 +9,12 @@ import lombok.EqualsAndHashCode.Include;
 import lombok.Getter;
 import lombok.Setter;
 
-@Entity(name = "PokemonCard")
-@Table(name = "qs_pokemon_cards")
+@Entity(name = "PokemonCardFts")
+@Table(name = "qs_fts_pokemon_cards")
 @Getter
 @Setter
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
-public class PokemonCardEntity {
+public class PokemonCardFtsEntity {
 
 
   @Id()
@@ -22,12 +22,8 @@ public class PokemonCardEntity {
   @Column(columnDefinition = "TEXT")
   private String id;
 
-  @Column(name = "name_de", nullable = false, columnDefinition = "TEXT")
-  private String nameDe;
-  @Column(name = "name_fr", nullable = false, columnDefinition = "TEXT")
-  private String nameFr;
-  @Column(name = "name_en", nullable = false, columnDefinition = "TEXT")
-  private String nameEn;
+  @Column(name = "names", nullable = false, columnDefinition = "TEXT")
+  private String names;
 
   @Column(nullable = false, columnDefinition = "TEXT")
   private String code;

@@ -5,6 +5,7 @@ import static org.springframework.util.StringUtils.hasText;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.dktutzer.tcgwatcher.data.data.PokemonCardEntity;
+import de.dktutzer.tcgwatcher.data.data.PokemonCardFtsEntity;
 import de.dktutzer.tcgwatcher.data.data.TCGDexCardDetailsModel;
 import de.dktutzer.tcgwatcher.data.data.TCGDexCardListModel;
 import de.dktutzer.tcgwatcher.data.data.TCGDexSetDetailsModel;
@@ -49,6 +50,8 @@ public class TCGMapperService {
   private final ObjectMapper objectMapper;
 
   private final QuickSearchCardsSqliteRepository quickSearchCardsSqliteRepository;
+
+  private final QuickSearchCardsFtsSqliteRepository quickSearchCardsFtsSqliteRepository;
 
   private final Map<SetKey, TCGDexSetDetailsModel> setnameCache = new ConcurrentHashMap<>(250);
   @Value("${app.adaptors.tcgdex.baseuri}")
@@ -278,10 +281,15 @@ public class TCGMapperService {
     var cards = objectMapper.readValue(new File(CARDS_JSON_FILE), new TypeReference<ArrayList<TCGWatcherPokemonModel>>() {});
 
     quickSearchCardsSqliteRepository.deleteAll();
-    var id = new AtomicLong(0);
-    var pokemonCardEntities = cards.stream().map(card -> {
-      var pokemonCardEntity = new PokemonCardEntity();
-      pokemonCardEntity.setId(id.getAndIncrement());
+    quickSearchCardsFtsSqliteRepository.deleteAll();
+
+    var normalizedCards = new ArrayList<PokemonCardEntity>();
+    var ftsCards = new ArrayList<PokemonCardFtsEntity>();
+
+    cards.forEach( card -> {
+      var normalCard = new PokemonCardEntity();
+      var ftsCard = new PokemonCardFtsEntity();
+
       var setModelOptional = sets.stream().filter(set -> set.getId().equalsIgnoreCase(card.getSetId())).findFirst();
       String setCode = card.getSetId().toUpperCase(Locale.ROOT);
       if (setModelOptional.isPresent()) {
@@ -290,16 +298,26 @@ public class TCGMapperService {
           setCode = code.toUpperCase();
         }
       }
-      var code = String.format("(%s %s)", setCode, card.getNumber());
-      pokemonCardEntity.setNameDe(card.getNames().get("de"));
-      pokemonCardEntity.setNameEn(card.getNames().get("en"));
-      pokemonCardEntity.setNameFr(card.getNames().get("fr"));
-      pokemonCardEntity.setCode(code);
-      pokemonCardEntity.setExternalId(card.getId());
+      var fullCardCode = String.format("%s %s", setCode, card.getNumber());
 
-      return pokemonCardEntity;
-    }).toList();
-    quickSearchCardsSqliteRepository.saveAll(pokemonCardEntities);
+      normalCard.setCode(fullCardCode);
+      normalCard.setId(card.getId());
+      normalCard.setNameDe(card.getNames().get("de"));
+      normalCard.setNameEn(card.getNames().get("en"));
+      normalCard.setNameFr(card.getNames().get("fr"));
+
+
+      ftsCard.setId(card.getId());
+      ftsCard.setCode(card.getNumber());
+      ftsCard.setNames(String.format("%s %s %s", card.getNames().get("de"), card.getNames().get("en"), card.getNames().get("fr")));
+      normalizedCards.add(normalCard);
+      ftsCards.add(ftsCard);
+
+    });
+
+
+    quickSearchCardsSqliteRepository.saveAll(normalizedCards);
+    quickSearchCardsFtsSqliteRepository.saveAll(ftsCards);
 
 
   }
