@@ -19,7 +19,7 @@
     <spring-shell.version>3.2.5</spring-shell.version>
     <spring-boot.version>3.2.5</spring-boot.version>
     <rewrite-maven-plugin.version>5.32.1</rewrite-maven-plugin.version>
-    <rewrite-static-analysis.version>1.8.1</rewrite-static-analysis.version>
+    <rewrite-static-analysis.version>1.14.0</rewrite-static-analysis.version>
     <versions-maven-plugin.version>2.16.2</versions-maven-plugin.version>
     <sqlite-jdbc.version>3.46.0.0</sqlite-jdbc.version>
   </properties>
