@@ -32,4 +32,7 @@ public class PokemonCardEntity {
   @Column(nullable = false, columnDefinition = "TEXT")
   private String code;
 
+  @Column(nullable = false, columnDefinition = "TEXT")
+  private String cmId;
+
 }

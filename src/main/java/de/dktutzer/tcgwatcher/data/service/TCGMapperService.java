@@ -6,12 +6,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.dktutzer.tcgwatcher.data.data.PokemonCardEntity;
 import de.dktutzer.tcgwatcher.data.data.PokemonCardFtsEntity;
+import de.dktutzer.tcgwatcher.data.data.PokemonTcgApiCardDto;
 import de.dktutzer.tcgwatcher.data.data.TCGDexCardDetailsModel;
 import de.dktutzer.tcgwatcher.data.data.TCGDexCardListModel;
 import de.dktutzer.tcgwatcher.data.data.TCGDexSetDetailsModel;
 import de.dktutzer.tcgwatcher.data.data.TCGDexSetDetailsModel.SeriesModel;
 import de.dktutzer.tcgwatcher.data.data.TCGDexSetListModel;
-import de.dktutzer.tcgwatcher.data.data.TCGWatcherPokemonModel;
+import de.dktutzer.tcgwatcher.data.data.TCGWatcherCardModel;
 import de.dktutzer.tcgwatcher.data.data.TCGWatcherSetModel;
 import java.io.File;
 import java.io.FileWriter;
@@ -23,7 +24,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -31,9 +34,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 @Service
@@ -43,6 +49,7 @@ public class TCGMapperService {
 
   public static final String CARDS_JSON_FILE = "./output/cardsFromTCGDex.json";
   public static final String SETS_JSON_FILE = "./output/setsFromTcgDexWithCode.json";
+
   private final TCGDataReader tcgDataReader;
 
   private final RestTemplate restTemplate;
@@ -56,6 +63,15 @@ public class TCGMapperService {
   private final Map<SetKey, TCGDexSetDetailsModel> setnameCache = new ConcurrentHashMap<>(250);
   @Value("${app.adaptors.tcgdex.baseuri}")
   private String tcgdexuri;
+  @Value("${app.adaptors.pokemontcgapi.baseuri}")
+  private String pkmTcgApiBasePath;
+
+  @Value("${app.adaptors.pokemontcgapi.apikey}")
+  private String pokemonApiTcgApiKey;
+
+  // Compile the pattern
+  private static Pattern cmLinkExtractor =
+      Pattern.compile("\\\\/Pokemon\\\\/Products\\\\/Singles\\\\/[\\w\\-]+\\\\/([\\w\\-]+)");
 
   private List<TCGDexCardListModel> readDexCards() {
     log.debug("Getting all Cards...");
@@ -70,7 +86,7 @@ public class TCGMapperService {
 
   private TCGDexCardDetailsModel getCardById(final String id, final String lang) {
 
-    log.debug("Getting Card with ID: {} for lang: {}", id, lang);
+    log.debug("Getting Card with ID: [{}] for lang: {}", id, lang);
     var cardUri = tcgdexuri + "v2/" + lang + "/cards/" + id;
 
     var cardDetailsDto = restTemplate.getForObject(cardUri, TCGDexCardDetailsModel.class);
@@ -137,18 +153,18 @@ public class TCGMapperService {
     }
 
     var uri = tcgdexuri + "v2/" + lang + "/sets/" + id;
-    log.debug("Getting Set with id: {} for lang: {}", id, lang);
+    log.debug("TCGDex: Getting Set with id: [{}] for lang: {}", id, lang);
     var dexSetDetailsDto = restTemplate.getForObject(uri, TCGDexSetDetailsModel.class);
     assert dexSetDetailsDto != null;
     if(dexSetDetailsDto.getSerie() == null) {
       dexSetDetailsDto.setSerie(new SeriesModel());//prevent npe later
     }
-    log.debug("Found: {}", dexSetDetailsDto);
+    log.debug("TCGDex: Found: {}", dexSetDetailsDto);
     setnameCache.put(setKey, dexSetDetailsDto);
     return dexSetDetailsDto;
   }
 
-  public List<TCGWatcherPokemonModel> readFromSourceAndWriteToJson() throws IOException {
+  public List<TCGWatcherCardModel> readFromSourceAndWriteToJson() throws IOException {
     log.info("lets go");
 
     var setsFromTCGDexRaw = readDexSets();
@@ -173,40 +189,49 @@ public class TCGMapperService {
             .map(
                 card -> {
                   log.info(
-                      "Handling: {} -  {} with id: {}",
+                      "Handling: [{}] - [{}] with id: [{}]",
                       counter.addAndGet(1),
                       card.getName(),
                       card.getId());
 
-                  var cardDexGerman = getCardById(card.getId(), "de");
-                  var cardDexEng = getCardById(card.getId(), "en");
-                  var cardDexFrench = getCardById(card.getId(), "fr");
+                  var cmId = getCardmarketIdFromPokemonTcgApiById(card.getId());
 
-                  if (hasText(cardDexGerman.getName())
-                      || hasText(cardDexEng.getName())
-                      || hasText(cardDexFrench.getName())) {
-                    var nameGer =
-                        mergeName(
-                            cardDexGerman.getName(), cardDexEng.getName(), cardDexFrench.getName());
-                    var nameEng =
-                        mergeName(
-                            cardDexEng.getName(), cardDexGerman.getName(), cardDexFrench.getName());
-                    var nameFr =
-                        mergeName(
-                            cardDexFrench.getName(), cardDexEng.getName(), cardDexGerman.getName());
-                    var names = Map.of("en", nameEng, "de", nameGer, "fr", nameFr);
+                  //We dont want cards without a cmID
+                  if(StringUtils.hasText(cmId))
+                  {
+                    log.debug("Found cmId: [{}]", cmId);
+                    var cardDexGerman = getCardById(card.getId(), "de");
+                    var cardDexEng = getCardById(card.getId(), "en");
+                    var cardDexFrench = getCardById(card.getId(), "fr");
 
-                    var tcgWatcherPokemon =
-                        TCGWatcherPokemonModel.builder()
-                            .id(card.getId())
-                            .names(names)
-                            .number(cardDexEng.getLocalId())
-                            .setId(cardDexEng.getSet().getId())
-                            .build();
+                    if (hasText(cardDexGerman.getName())
+                        || hasText(cardDexEng.getName())
+                        || hasText(cardDexFrench.getName())) {
+                      var nameGer =
+                          mergeName(
+                              cardDexGerman.getName(), cardDexEng.getName(), cardDexFrench.getName());
+                      var nameEng =
+                          mergeName(
+                              cardDexEng.getName(), cardDexGerman.getName(), cardDexFrench.getName());
+                      var nameFr =
+                          mergeName(
+                              cardDexFrench.getName(), cardDexEng.getName(), cardDexGerman.getName());
+                      var names = Map.of("en", nameEng, "de", nameGer, "fr", nameFr);
 
-                    log.debug("Adding: {}", tcgWatcherPokemon);
-                    return tcgWatcherPokemon;
+                      var tcgWatcherPokemon =
+                          TCGWatcherCardModel.builder()
+                              .id(card.getId())
+                              .names(names)
+                              .number(cardDexEng.getLocalId())
+                              .setId(cardDexEng.getSet().getId())
+                              .cmId(cmId)
+                              .build();
+
+                      log.info("Adding: {}", tcgWatcherPokemon);
+                      return tcgWatcherPokemon;
+                    }
                   }
+
                   return null;
                 })
             .toList();
@@ -220,6 +245,79 @@ public class TCGMapperService {
     }
     log.info("done");
     return mappedCards;
+  }
+
+  private String getCardmarketIdFromPokemonTcgApiById(String id) {
+    log.debug("PokemonTcgApi: Getting Card with ID: {}", id);
+
+    var cardUri = this.pkmTcgApiBasePath + id;
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.set("X-Api-Key", this.pokemonApiTcgApiKey);
+
+    // Create the request entity with headers
+    HttpEntity<String> entity = new HttpEntity<>(headers);
+
+    // Execute the request
+    ResponseEntity<PokemonTcgApiCardDto> response = restTemplate.exchange(
+        cardUri,
+        HttpMethod.GET,
+        entity,
+        PokemonTcgApiCardDto.class
+    );
+    if(response.getStatusCode().is2xxSuccessful()) {
+
+      // Return the body of the response
+      var cardDetailsDto = response.getBody();
+
+      log.debug("PokemonTcgApi: Found: {}", cardDetailsDto);
+
+      if(cardDetailsDto!=null && cardDetailsDto.getData()!=null && cardDetailsDto.getData().getCardmarket()!=null)
+      {
+        var cmUrl = cardDetailsDto.getData().getCardmarket().getUrl();
+        return getCardmarketIdFromPokemonApiById(cmUrl);
+      }
+
+    }
+    log.debug("PokemonTcgApi: not found");
+
+    return "";
+
+  }
+
+
+  /*
+  i have no idea why but requesting the prices.pokemontcg.io api results in a 403.
+  Doing the same in the browser or with curl works just fine. Must be some cloudflare stuff...
+  BUT the error message contains the cardmarket uri we want. So...
+   */
+  public String getCardmarketIdFromPokemonApiById(String pricesPokemonApiUri) {
+    var cmHeader = new HttpHeaders();
+
+    var cmHttpEntity = new HttpEntity<>(pricesPokemonApiUri, cmHeader);
+
+    ResponseEntity<String> cmResponse = restTemplate.exchange(
+        pricesPokemonApiUri,
+        HttpMethod.GET,
+        cmHttpEntity,
+        String.class
+    );
+
+    var body = cmResponse.getBody();
+    if(StringUtils.hasText( body)) {
+      // Create a matcher from the input string
+      Matcher matcher = cmLinkExtractor.matcher(body);
+
+      if (matcher.find() && matcher.groupCount()>0) {
+        var escapedUri = matcher.group(1);
+        if(StringUtils.hasText( escapedUri)) {
+          return escapedUri;
+        }
+        return "";
+      }
+
+    }
+    return  "";
   }
 
   private Map<String, TCGWatcherSetModel> mergeSets(
@@ -278,7 +376,7 @@ public class TCGMapperService {
   public void readFromJsonAndWriteToSqlite() throws IOException {
 
     var sets = objectMapper.readValue(new File(SETS_JSON_FILE), new TypeReference<ArrayList<TCGWatcherSetModel>>() {});
-    var cards = objectMapper.readValue(new File(CARDS_JSON_FILE), new TypeReference<ArrayList<TCGWatcherPokemonModel>>() {});
+    var cards = objectMapper.readValue(new File(CARDS_JSON_FILE), new TypeReference<ArrayList<TCGWatcherCardModel>>() {});
 
     quickSearchCardsSqliteRepository.deleteAll();
     quickSearchCardsFtsSqliteRepository.deleteAll();
@@ -287,34 +385,36 @@ public class TCGMapperService {
     var ftsCards = new ArrayList<PokemonCardFtsEntity>();
 
     cards.forEach( card -> {
-      var normalCard = new PokemonCardEntity();
-      var ftsCard = new PokemonCardFtsEntity();
+      if(card != null) {
+        var normalCard = new PokemonCardEntity();
+        var ftsCard = new PokemonCardFtsEntity();
 
-      var setModelOptional = sets.stream().filter(set -> set.getId().equalsIgnoreCase(card.getSetId())).findFirst();
-      String setCode = card.getSetId().toUpperCase(Locale.ROOT);
-      if (setModelOptional.isPresent()) {
-        var code = setModelOptional.get().getCode();
-        if (hasText(code)) {
-          setCode = code.toUpperCase();
+        var setModelOptional = sets.stream().filter(set -> set.getId().equalsIgnoreCase(card.getSetId())).findFirst();
+        String setCode = card.getSetId().toUpperCase(Locale.ROOT);
+        if (setModelOptional.isPresent()) {
+          var code = setModelOptional.get().getCode();
+          if (hasText(code)) {
+            setCode = code.toUpperCase();
+          }
         }
+        var fullCardCode = String.format("%s %s", setCode, card.getNumber());
+
+        normalCard.setCode(fullCardCode);
+        normalCard.setId(card.getId());
+        normalCard.setNameDe(card.getNames().get("de"));
+        normalCard.setNameEn(card.getNames().get("en"));
+        normalCard.setNameFr(card.getNames().get("fr"));
+        normalCard.setCmId(card.getCmId());
+
+
+        ftsCard.setId(card.getId());
+        ftsCard.setCode(card.getNumber());
+        ftsCard.setNames(String.format("%s %s %s", card.getNames().get("de"), card.getNames().get("en"), card.getNames().get("fr")));
+        normalizedCards.add(normalCard);
+        ftsCards.add(ftsCard);
+
       }
-      var fullCardCode = String.format("%s %s", setCode, card.getNumber());
-
-      normalCard.setCode(fullCardCode);
-      normalCard.setId(card.getId());
-      normalCard.setNameDe(card.getNames().get("de"));
-      normalCard.setNameEn(card.getNames().get("en"));
-      normalCard.setNameFr(card.getNames().get("fr"));
-
-
-      ftsCard.setId(card.getId());
-      ftsCard.setCode(card.getNumber());
-      ftsCard.setNames(String.format("%s %s %s", card.getNames().get("de"), card.getNames().get("en"), card.getNames().get("fr")));
-      normalizedCards.add(normalCard);
-      ftsCards.add(ftsCard);
-
     });
-
 
     quickSearchCardsSqliteRepository.saveAll(normalizedCards);
     quickSearchCardsFtsSqliteRepository.saveAll(ftsCards);

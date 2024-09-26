@@ -10,11 +10,12 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TCGWatcherPokemonModel {
+public class TCGWatcherCardModel {
 
   private String id;
   private Map<String, String> names;
   private String setId;
   private String number;
+  private String cmId;
 
 }

@@ -20,6 +20,7 @@ public class TcgDataCreatorCommand {
 
     try {
       tcgMapperService.readFromSourceAndWriteToJson();
+      tcgMapperService.readFromJsonAndWriteToSqlite();
     } catch (IOException e) {
       throw new RuntimeException(e);
     }

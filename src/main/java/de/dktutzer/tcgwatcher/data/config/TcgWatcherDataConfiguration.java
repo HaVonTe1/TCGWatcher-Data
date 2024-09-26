@@ -32,8 +32,7 @@ public class TcgWatcherDataConfiguration {
       public void handleError(ClientHttpResponse response) throws IOException {
         var statusCode = response.getStatusCode();
 
-
-        log.warn("StatusCode: {}", statusCode.value());
+        log.debug("RstTmpl: HandleError: {}", statusCode.value());
       }
     }).build();
 
