@@ -18,10 +18,10 @@
     <java.version>21</java.version>
     <spring-shell.version>3.3.3</spring-shell.version>
     <spring-boot.version>3.2.5</spring-boot.version>
-    <rewrite-maven-plugin.version>5.41.0</rewrite-maven-plugin.version>
-    <rewrite-static-analysis.version>1.17.0</rewrite-static-analysis.version>
-    <versions-maven-plugin.version>2.17.1</versions-maven-plugin.version>
-    <sqlite-jdbc.version>3.46.1.1</sqlite-jdbc.version>
+    <rewrite-maven-plugin.version>6.13.0</rewrite-maven-plugin.version>
+    <rewrite-static-analysis.version>2.12.0</rewrite-static-analysis.version>
+    <versions-maven-plugin.version>2.18.0</versions-maven-plugin.version>
+    <sqlite-jdbc.version>3.50.2.0</sqlite-jdbc.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -77,7 +77,6 @@
     <dependency>
       <groupId>org.xerial</groupId>
       <artifactId>sqlite-jdbc</artifactId>
-      <version>${sqlite-jdbc.version}</version>
     </dependency>
     <dependency>
       <groupId>org.hibernate.orm</groupId>
@@ -138,7 +137,6 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>versions-maven-plugin</artifactId>
-        <version>${versions-maven-plugin.version}</version>
 
       </plugin>
     </plugins>

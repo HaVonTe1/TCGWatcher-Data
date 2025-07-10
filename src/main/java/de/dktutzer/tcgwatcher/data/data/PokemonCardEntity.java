@@ -33,6 +33,9 @@ public class PokemonCardEntity {
   private String code;
 
   @Column(nullable = false, columnDefinition = "TEXT")
-  private String cmId;
+  private String cmSetId;
+
+  @Column(nullable = false, columnDefinition = "TEXT")
+  private String cmCardId;
 
 }

@@ -24,7 +24,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -34,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.data.util.Pair;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -70,8 +70,8 @@ public class TCGMapperService {
   private String pokemonApiTcgApiKey;
 
   // Compile the pattern
-  private static Pattern cmLinkExtractor =
-      Pattern.compile("\\\\/Pokemon\\\\/Products\\\\/Singles\\\\/[\\w\\-]+\\\\/([\\w\\-]+)");
+  private static final Pattern cmLinkExtractor =
+      Pattern.compile("\\\\/Pokemon\\\\/Products\\\\/Singles\\\\/([\\w\\-]+)\\\\/([\\w\\-]+)");
 
   private List<TCGDexCardListModel> readDexCards() {
     log.debug("Getting all Cards...");
@@ -194,12 +194,12 @@ public class TCGMapperService {
                       card.getName(),
                       card.getId());
 
-                  var cmId = getCardmarketIdFromPokemonTcgApiById(card.getId());
+                  var cmPair = getCardmarketIdFromPokemonTcgApiById(card.getId());
 
                   //We dont want cards without a cmID
-                  if(StringUtils.hasText(cmId))
+                  if (cmPair != null)
                   {
-                    log.debug("Found cmId: [{}]", cmId);
+                    log.debug("Found cmId: [{}]", cmPair);
                     var cardDexGerman = getCardById(card.getId(), "de");
                     var cardDexEng = getCardById(card.getId(), "en");
                     var cardDexFrench = getCardById(card.getId(), "fr");
@@ -224,7 +224,8 @@ public class TCGMapperService {
                               .names(names)
                               .number(cardDexEng.getLocalId())
                               .setId(cardDexEng.getSet().getId())
-                              .cmId(cmId)
+                              .cmSetId(cmPair.getFirst())
+                              .cmCardId(cmPair.getSecond())
                               .build();
 
                       log.info("Adding: {}", tcgWatcherPokemon);
@@ -247,7 +248,7 @@ public class TCGMapperService {
     return mappedCards;
   }
 
-  private String getCardmarketIdFromPokemonTcgApiById(String id) {
+  private Pair<String, String> getCardmarketIdFromPokemonTcgApiById(String id) {
     log.debug("PokemonTcgApi: Getting Card with ID: {}", id);
 
     var cardUri = this.pkmTcgApiBasePath + id;
@@ -281,7 +282,7 @@ public class TCGMapperService {
     }
     log.debug("PokemonTcgApi: not found");
 
-    return "";
+    return null;
 
   }
 
@@ -291,7 +292,7 @@ public class TCGMapperService {
   Doing the same in the browser or with curl works just fine. Must be some cloudflare stuff...
   BUT the error message contains the cardmarket uri we want. So...
    */
-  public String getCardmarketIdFromPokemonApiById(String pricesPokemonApiUri) {
+  public Pair<String, String> getCardmarketIdFromPokemonApiById(String pricesPokemonApiUri) {
     var cmHeader = new HttpHeaders();
 
     var cmHttpEntity = new HttpEntity<>(pricesPokemonApiUri, cmHeader);
@@ -304,20 +305,21 @@ public class TCGMapperService {
     );
 
     var body = cmResponse.getBody();
-    if(StringUtils.hasText( body)) {
+    if(StringUtils.hasText(body)) {
       // Create a matcher from the input string
       Matcher matcher = cmLinkExtractor.matcher(body);
 
-      if (matcher.find() && matcher.groupCount()>0) {
-        var escapedUri = matcher.group(1);
-        if(StringUtils.hasText( escapedUri)) {
-          return escapedUri;
+      if (matcher.find() && matcher.groupCount()==2) {
+        var cmSetId = matcher.group(1);
+        var cmCardId = matcher.group(2);
+        if(StringUtils.hasText(cmSetId) && StringUtils.hasText(cmCardId) ) {
+          return  Pair.of(cmSetId, cmCardId);
         }
-        return "";
+        return null;
       }
 
     }
-    return  "";
+    return  null;
   }
 
   private Map<String, TCGWatcherSetModel> mergeSets(
@@ -384,8 +386,8 @@ public class TCGMapperService {
     var normalizedCards = new ArrayList<PokemonCardEntity>();
     var ftsCards = new ArrayList<PokemonCardFtsEntity>();
 
-    cards.forEach( card -> {
-      if(card != null) {
+    cards.forEach(card -> {
+      if (card != null) {
         var normalCard = new PokemonCardEntity();
         var ftsCard = new PokemonCardFtsEntity();
 
@@ -404,7 +406,8 @@ public class TCGMapperService {
         normalCard.setNameDe(card.getNames().get("de"));
         normalCard.setNameEn(card.getNames().get("en"));
         normalCard.setNameFr(card.getNames().get("fr"));
-        normalCard.setCmId(card.getCmId());
+        normalCard.setCmCardId(card.getCmCardId());
+        normalCard.setCmSetId(card.getCmSetId());
 
 
         ftsCard.setId(card.getId());

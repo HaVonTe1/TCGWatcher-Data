@@ -16,6 +16,7 @@ public class TCGWatcherCardModel {
   private Map<String, String> names;
   private String setId;
   private String number;
-  private String cmId;
+  private String cmSetId;
+  private String cmCardId;
 
 }
