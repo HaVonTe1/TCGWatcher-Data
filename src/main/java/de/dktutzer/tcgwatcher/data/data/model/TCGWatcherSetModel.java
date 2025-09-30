@@ -1,4 +1,4 @@
-package de.dktutzer.tcgwatcher.data.data;
+package de.dktutzer.tcgwatcher.data.data.model;
 
 import java.util.Map;
 import lombok.AllArgsConstructor;
@@ -10,13 +10,14 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TCGWatcherCardModel {
+public class TCGWatcherSetModel {
 
   private String id;
+  private Integer numberTotal;
+  private Integer numberOfficial;
+  private String code;
+  private String abbreviation;
   private Map<String, String> names;
-  private String setId;
-  private String number;
-  private String cmSetId;
-  private String cmCardId;
+  private TCGWatcherSeriesModel series;
 
 }

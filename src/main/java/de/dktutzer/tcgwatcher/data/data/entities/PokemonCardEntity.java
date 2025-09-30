@@ -1,4 +1,4 @@
-package de.dktutzer.tcgwatcher.data.data;
+package de.dktutzer.tcgwatcher.data.data.entities;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

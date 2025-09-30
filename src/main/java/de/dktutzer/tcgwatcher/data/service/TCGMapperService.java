@@ -4,16 +4,23 @@ import static org.springframework.util.StringUtils.hasText;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.dktutzer.tcgwatcher.data.data.PokemonCardEntity;
-import de.dktutzer.tcgwatcher.data.data.PokemonCardFtsEntity;
-import de.dktutzer.tcgwatcher.data.data.PokemonTcgApiCardDto;
-import de.dktutzer.tcgwatcher.data.data.TCGDexCardDetailsModel;
-import de.dktutzer.tcgwatcher.data.data.TCGDexCardListModel;
-import de.dktutzer.tcgwatcher.data.data.TCGDexSetDetailsModel;
-import de.dktutzer.tcgwatcher.data.data.TCGDexSetDetailsModel.SeriesModel;
-import de.dktutzer.tcgwatcher.data.data.TCGDexSetListModel;
-import de.dktutzer.tcgwatcher.data.data.TCGWatcherCardModel;
-import de.dktutzer.tcgwatcher.data.data.TCGWatcherSetModel;
+import de.dktutzer.tcgwatcher.data.data.entities.PokemonCardEntity;
+import de.dktutzer.tcgwatcher.data.data.entities.PokemonCardFtsEntity;
+import de.dktutzer.tcgwatcher.data.data.entities.PokemonSeriesEntity;
+import de.dktutzer.tcgwatcher.data.data.entities.PokemonSetEntity;
+import de.dktutzer.tcgwatcher.data.data.dto.PokemonTcgApiCardDto;
+import de.dktutzer.tcgwatcher.data.data.model.TCGDexCardDetailsModel;
+import de.dktutzer.tcgwatcher.data.data.model.TCGDexCardListModel;
+import de.dktutzer.tcgwatcher.data.data.dto.TCGDexSetDetailsDto;
+import de.dktutzer.tcgwatcher.data.data.dto.TCGDexSetDetailsDto.Series;
+import de.dktutzer.tcgwatcher.data.data.model.TCGDexSetListModel;
+import de.dktutzer.tcgwatcher.data.data.model.TCGWatcherCardModel;
+import de.dktutzer.tcgwatcher.data.data.model.TCGWatcherSeriesModel;
+import de.dktutzer.tcgwatcher.data.data.model.TCGWatcherSetModel;
+import de.dktutzer.tcgwatcher.data.service.persistence.QuickSearchCardsFtsSqliteRepository;
+import de.dktutzer.tcgwatcher.data.service.persistence.QuickSearchCardsSqliteRepository;
+import de.dktutzer.tcgwatcher.data.service.persistence.SeriesSqlRepository;
+import de.dktutzer.tcgwatcher.data.service.persistence.SetsSqliteRepository;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -22,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
@@ -57,17 +65,14 @@ public class TCGMapperService {
   private final ObjectMapper objectMapper;
 
   private final QuickSearchCardsSqliteRepository quickSearchCardsSqliteRepository;
+  private final SetsSqliteRepository setsSqliteRepository;
+  private final SeriesSqlRepository seriesSqlRepository;
 
   private final QuickSearchCardsFtsSqliteRepository quickSearchCardsFtsSqliteRepository;
 
-  private final Map<SetKey, TCGDexSetDetailsModel> setnameCache = new ConcurrentHashMap<>(250);
+  private final Map<SetKey, TCGDexSetDetailsDto> setnameCache = new ConcurrentHashMap<>(250);
   @Value("${app.adaptors.tcgdex.baseuri}")
   private String tcgdexuri;
-  @Value("${app.adaptors.pokemontcgapi.baseuri}")
-  private String pkmTcgApiBasePath;
-
-  @Value("${app.adaptors.pokemontcgapi.apikey}")
-  private String pokemonApiTcgApiKey;
 
   // Compile the pattern
   private static final Pattern cmLinkExtractor =
@@ -136,17 +141,23 @@ public class TCGMapperService {
                       setEnglish.getSerie().getName(),
                       setGerman.getSerie().getName()));
 
+              var tcgWatcherSeriesModel = TCGWatcherSeriesModel.builder()
+                  .id(setEnglish.getSerie().getId())
+                  .names(seriesMap)
+                  .build();
               return TCGWatcherSetModel.builder()
                   .id(setListModel.getId())
                   .names(namesMap)
-                  .number(setEnglish.getCardCount().getOfficial())
-                  .series(seriesMap)
+                  .abbreviation(setEnglish.getAbbreviation().getOfficial())
+                  .numberOfficial(setEnglish.getCardCount().getOfficial())
+                  .numberTotal(setEnglish.getCardCount().getTotal())
+                  .series(tcgWatcherSeriesModel)
                   .build();
             })
         .collect(Collectors.toMap(TCGWatcherSetModel::getId, set -> set));
   }
 
-  private TCGDexSetDetailsModel getSetByIdAndLang(String id, String lang) {
+  private TCGDexSetDetailsDto getSetByIdAndLang(String id, String lang) {
     var setKey = new SetKey(id, lang);
     if (setnameCache.containsKey(setKey)) {
       return setnameCache.get(setKey);
@@ -154,10 +165,10 @@ public class TCGMapperService {
 
     var uri = tcgdexuri + "v2/" + lang + "/sets/" + id;
     log.debug("TCGDex: Getting Set with id: [{}] for lang: {}", id, lang);
-    var dexSetDetailsDto = restTemplate.getForObject(uri, TCGDexSetDetailsModel.class);
+    var dexSetDetailsDto = restTemplate.getForObject(uri, TCGDexSetDetailsDto.class);
     assert dexSetDetailsDto != null;
     if(dexSetDetailsDto.getSerie() == null) {
-      dexSetDetailsDto.setSerie(new SeriesModel());//prevent npe later
+      dexSetDetailsDto.setSerie(new Series());//prevent npe later
     }
     log.debug("TCGDex: Found: {}", dexSetDetailsDto);
     setnameCache.put(setKey, dexSetDetailsDto);
@@ -169,6 +180,7 @@ public class TCGMapperService {
 
     var setsFromTCGDexRaw = readDexSets();
     var setsFromTCGDataRaw = tcgDataReader.readSetsFromFile();
+    var cardsFromTCGDataRaw = tcgDataReader.readCardsFromFile();
 
     var setsForTCGWatcherMerged = mergeSets(setsFromTCGDexRaw, setsFromTCGDataRaw);
     var setsForTCGWatcherAsList = setsForTCGWatcherMerged.values();
@@ -194,6 +206,7 @@ public class TCGMapperService {
                       card.getName(),
                       card.getId());
 
+                  //cmPair = (cmSetId,cmCardId)
                   var cmPair = getCardmarketIdFromPokemonTcgApiById(card.getId());
 
                   //We dont want cards without a cmID
@@ -251,22 +264,6 @@ public class TCGMapperService {
   private Pair<String, String> getCardmarketIdFromPokemonTcgApiById(String id) {
     log.debug("PokemonTcgApi: Getting Card with ID: {}", id);
 
-    var cardUri = this.pkmTcgApiBasePath + id;
-
-    HttpHeaders headers = new HttpHeaders();
-    headers.set("X-Api-Key", this.pokemonApiTcgApiKey);
-
-    // Create the request entity with headers
-    HttpEntity<String> entity = new HttpEntity<>(headers);
-
-    // Execute the request
-    ResponseEntity<PokemonTcgApiCardDto> response = restTemplate.exchange(
-        cardUri,
-        HttpMethod.GET,
-        entity,
-        PokemonTcgApiCardDto.class
-    );
-    if(response.getStatusCode().is2xxSuccessful()) {
 
       // Return the body of the response
       var cardDetailsDto = response.getBody();
@@ -279,7 +276,6 @@ public class TCGMapperService {
         return getCardmarketIdFromPokemonApiById(cmUrl);
       }
 
-    }
     log.debug("PokemonTcgApi: not found");
 
     return null;
@@ -331,23 +327,23 @@ public class TCGMapperService {
     // so we search the english name from both setlists and merge the i18n names into the tcgdata
     // list
 
-    setsFromTCGDexRaw.forEach(
-        (dexSetId, watcherSetModel) -> {
-          var matchingTcgDataSet =
-              setsFromTCGDataRaw.values().stream()
-                  .filter(
-                      dataSet -> {
-                        var tcgDataNamesMap = dataSet.getNames();
-                        var watcherNamesMap = watcherSetModel.getNames();
-
-                        return watcherNamesMap.get("en").compareTo(tcgDataNamesMap.get("en"))
-                            == 0;
-                      })
-                  .findFirst();
-          matchingTcgDataSet.ifPresent(
-              tcgWatcherSetModel -> watcherSetModel.setCode(tcgWatcherSetModel.getCode()));
+    setsFromTCGDexRaw.forEach((dexSetId, watcherSetModel) -> {
+      var code = findMatchingSetCode(watcherSetModel, setsFromTCGDataRaw);
+      if (hasText(code)) {
+        watcherSetModel.setCode(code);
+      }
         });
     return setsFromTCGDexRaw;
+  }
+
+  private String findMatchingSetCode(TCGWatcherSetModel watcherSetModel, Map<String, TCGWatcherSetModel> setsFromTCGDataRaw) {
+    var watcherNameEn = watcherSetModel.getNames().get("en");
+    return setsFromTCGDataRaw.values().parallelStream()
+        .filter(dataSet -> watcherNameEn.compareTo(dataSet.getNames().get("en")) == 0)
+        .map(TCGWatcherSetModel::getCode)
+        .filter(StringUtils::hasText)
+        .findFirst()
+        .orElse(null);
   }
 
   private String mergeName(String name1, String name2, String name3) {
@@ -382,46 +378,85 @@ public class TCGMapperService {
 
     quickSearchCardsSqliteRepository.deleteAll();
     quickSearchCardsFtsSqliteRepository.deleteAll();
+    setsSqliteRepository.deleteAll();
+    seriesSqlRepository.deleteAll();
 
     var normalizedCards = new ArrayList<PokemonCardEntity>();
     var ftsCards = new ArrayList<PokemonCardFtsEntity>();
+    var nomalizedSets = new ArrayList<PokemonSetEntity>();
 
     cards.forEach(card -> {
       if (card != null) {
         var normalCard = new PokemonCardEntity();
+        var normalSet = new PokemonSetEntity();
         var ftsCard = new PokemonCardFtsEntity();
 
         var setModelOptional = sets.stream().filter(set -> set.getId().equalsIgnoreCase(card.getSetId())).findFirst();
         String setCode = card.getSetId().toUpperCase(Locale.ROOT);
         if (setModelOptional.isPresent()) {
-          var code = setModelOptional.get().getCode();
+          var tcgWatcherSetModel = setModelOptional.get();
+          var code = tcgWatcherSetModel.getCode();
           if (hasText(code)) {
             setCode = code.toUpperCase();
           }
+
+          var series = findOrCreateSeriesByName(tcgWatcherSetModel.getSeries());
+
+          normalSet.setCmSetId(card.getCmSetId());
+          normalSet.setCode(setCode);
+          normalSet.setId(tcgWatcherSetModel.getId());
+          var setModelNames = tcgWatcherSetModel.getNames();
+          normalSet.setNameEn(setModelNames.get("en"));
+          normalSet.setNameDe(setModelNames.get("de"));
+          normalSet.setNameFr(setModelNames.get("fr"));
+          normalSet.setSeries(series);
+          normalSet.setOfficial(tcgWatcherSetModel.getNumberOfficial());
+          normalSet.setTotal(tcgWatcherSetModel.getNumberTotal());
+          normalSet.setAbbreviation(tcgWatcherSetModel.getAbbreviation());
+
+          nomalizedSets.add(normalSet);
+
         }
         var fullCardCode = String.format("%s %s", setCode, card.getNumber());
 
         normalCard.setCode(fullCardCode);
         normalCard.setId(card.getId());
-        normalCard.setNameDe(card.getNames().get("de"));
-        normalCard.setNameEn(card.getNames().get("en"));
-        normalCard.setNameFr(card.getNames().get("fr"));
+        var cardNames = card.getNames();
+        normalCard.setNameDe(cardNames.get("de"));
+        normalCard.setNameEn(cardNames.get("en"));
+        normalCard.setNameFr(cardNames.get("fr"));
         normalCard.setCmCardId(card.getCmCardId());
         normalCard.setCmSetId(card.getCmSetId());
 
 
         ftsCard.setId(card.getId());
         ftsCard.setCode(card.getNumber());
-        ftsCard.setNames(String.format("%s %s %s", card.getNames().get("de"), card.getNames().get("en"), card.getNames().get("fr")));
+        ftsCard.setNames(String.format("%s %s %s", cardNames.get("de"), cardNames.get("en"), cardNames.get("fr")));
         normalizedCards.add(normalCard);
         ftsCards.add(ftsCard);
 
       }
     });
 
+    setsSqliteRepository.saveAll(nomalizedSets);
     quickSearchCardsSqliteRepository.saveAll(normalizedCards);
     quickSearchCardsFtsSqliteRepository.saveAll(ftsCards);
 
 
+  }
+
+  private PokemonSeriesEntity findOrCreateSeriesByName(TCGWatcherSeriesModel series) {
+
+    var optional = seriesSqlRepository.findById(series.getId());
+    if (optional.isPresent()) {
+      return optional.get();
+    }
+    var pokemonSeriesEntity = new PokemonSeriesEntity();
+    pokemonSeriesEntity.setId(series.getId());
+    pokemonSeriesEntity.setNameDe(series.getNames().get("de"));
+    pokemonSeriesEntity.setNameEn(series.getNames().get("en"));
+    pokemonSeriesEntity.setNameFr(series.getNames().get("fr"));
+    seriesSqlRepository.save(pokemonSeriesEntity);
+    return  pokemonSeriesEntity;
   }
 }

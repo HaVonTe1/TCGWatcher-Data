@@ -1,4 +1,4 @@
-package de.dktutzer.tcgwatcher.data.data;
+package de.dktutzer.tcgwatcher.data.data.model;
 
 import lombok.Data;
 
