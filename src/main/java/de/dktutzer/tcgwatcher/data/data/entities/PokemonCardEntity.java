@@ -17,11 +17,13 @@ import lombok.Setter;
 public class PokemonCardEntity {
 
 
+  //internal id
   @Id()
   @Include
   @Column(columnDefinition = "TEXT")
   private String id;
 
+  //the different names of the card in various languages
   @Column(name = "name_de", nullable = false, columnDefinition = "TEXT")
   private String nameDe;
   @Column(name = "name_fr", nullable = false, columnDefinition = "TEXT")
@@ -29,13 +31,13 @@ public class PokemonCardEntity {
   @Column(name = "name_en", nullable = false, columnDefinition = "TEXT")
   private String nameEn;
 
+  //the card code
+  //eg: MEG 104 for Mega-Kangaskhan-ex-V1-MEG104
   @Column(nullable = false, columnDefinition = "TEXT")
   private String code;
 
   @Column(nullable = false, columnDefinition = "TEXT")
-  private String cmSetId;
+  private String setId;
 
-  @Column(nullable = false, columnDefinition = "TEXT")
-  private String cmCardId;
 
 }

@@ -33,9 +33,6 @@ package de.dktutzer.tcgwatcher.data.data.entities;
     private String code;
 
     @Column(nullable = false, columnDefinition = "TEXT")
-    private String cmSetId;
-
-    @Column(nullable = false, columnDefinition = "TEXT")
     private String abbreviation;
 
     @Column(nullable = false, columnDefinition = "NUMBER")

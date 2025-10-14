@@ -29,10 +29,5 @@ class TCGDataMapperServiceIT {
 
   }
 
-  @Test
-  @DisplayName("Testing the extraction of the cardmarket_id from the prices.pokemontcg.io api")
-  void testGetCmIdViaTcgApi() throws IOException {
 
-    tcgMapperService.getCardmarketIdFromPokemonApiById("https://prices.pokemontcg.io/cardmarket/swsh3-174");
-  }
 }

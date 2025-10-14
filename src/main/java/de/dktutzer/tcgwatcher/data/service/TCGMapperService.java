@@ -148,7 +148,7 @@ public class TCGMapperService {
               return TCGWatcherSetModel.builder()
                   .id(setListModel.getId())
                   .names(namesMap)
-                  .abbreviation(setEnglish.getAbbreviation().getOfficial())
+                  .abbreviation(setEnglish.getAbbreviation()!= null ? setEnglish.getAbbreviation().getOfficial() : "")
                   .numberOfficial(setEnglish.getCardCount().getOfficial())
                   .numberTotal(setEnglish.getCardCount().getTotal())
                   .series(tcgWatcherSeriesModel)
@@ -180,11 +180,10 @@ public class TCGMapperService {
 
     var setsFromTCGDexRaw = readDexSets();
     var setsFromTCGDataRaw = tcgDataReader.readSetsFromFile();
-    var cardsFromTCGDataRaw = tcgDataReader.readCardsFromFile();
 
     var setsForTCGWatcherMerged = mergeSets(setsFromTCGDexRaw, setsFromTCGDataRaw);
     var setsForTCGWatcherAsList = setsForTCGWatcherMerged.values();
-    var setsJson = objectMapper.writeValueAsString(setsForTCGWatcherAsList);
+    var setsJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(setsForTCGWatcherAsList);
     log.info("Writing sets to file");
     try (FileWriter writer = new FileWriter(SETS_JSON_FILE)) {
       writer.write(setsJson);
@@ -206,13 +205,8 @@ public class TCGMapperService {
                       card.getName(),
                       card.getId());
 
-                  //cmPair = (cmSetId,cmCardId)
-                  var cmPair = getCardmarketIdFromPokemonTcgApiById(card.getId());
 
-                  //We dont want cards without a cmID
-                  if (cmPair != null)
                   {
-                    log.debug("Found cmId: [{}]", cmPair);
                     var cardDexGerman = getCardById(card.getId(), "de");
                     var cardDexEng = getCardById(card.getId(), "en");
                     var cardDexFrench = getCardById(card.getId(), "fr");
@@ -237,8 +231,6 @@ public class TCGMapperService {
                               .names(names)
                               .number(cardDexEng.getLocalId())
                               .setId(cardDexEng.getSet().getId())
-                              .cmSetId(cmPair.getFirst())
-                              .cmCardId(cmPair.getSecond())
                               .build();
 
                       log.info("Adding: {}", tcgWatcherPokemon);
@@ -250,7 +242,7 @@ public class TCGMapperService {
                 })
             .toList();
 
-    var cardsJson = objectMapper.writeValueAsString(mappedCards);
+    var cardsJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(mappedCards);
     log.debug("Writing cards to file");
     try (FileWriter writer = new FileWriter(CARDS_JSON_FILE)) {
       writer.write(cardsJson);
@@ -261,62 +253,9 @@ public class TCGMapperService {
     return mappedCards;
   }
 
-  private Pair<String, String> getCardmarketIdFromPokemonTcgApiById(String id) {
-    log.debug("PokemonTcgApi: Getting Card with ID: {}", id);
 
 
-      // Return the body of the response
-      var cardDetailsDto = response.getBody();
 
-      log.debug("PokemonTcgApi: Found: {}", cardDetailsDto);
-
-      if(cardDetailsDto!=null && cardDetailsDto.getData()!=null && cardDetailsDto.getData().getCardmarket()!=null)
-      {
-        var cmUrl = cardDetailsDto.getData().getCardmarket().getUrl();
-        return getCardmarketIdFromPokemonApiById(cmUrl);
-      }
-
-    log.debug("PokemonTcgApi: not found");
-
-    return null;
-
-  }
-
-
-  /*
-  i have no idea why but requesting the prices.pokemontcg.io api results in a 403.
-  Doing the same in the browser or with curl works just fine. Must be some cloudflare stuff...
-  BUT the error message contains the cardmarket uri we want. So...
-   */
-  public Pair<String, String> getCardmarketIdFromPokemonApiById(String pricesPokemonApiUri) {
-    var cmHeader = new HttpHeaders();
-
-    var cmHttpEntity = new HttpEntity<>(pricesPokemonApiUri, cmHeader);
-
-    ResponseEntity<String> cmResponse = restTemplate.exchange(
-        pricesPokemonApiUri,
-        HttpMethod.GET,
-        cmHttpEntity,
-        String.class
-    );
-
-    var body = cmResponse.getBody();
-    if(StringUtils.hasText(body)) {
-      // Create a matcher from the input string
-      Matcher matcher = cmLinkExtractor.matcher(body);
-
-      if (matcher.find() && matcher.groupCount()==2) {
-        var cmSetId = matcher.group(1);
-        var cmCardId = matcher.group(2);
-        if(StringUtils.hasText(cmSetId) && StringUtils.hasText(cmCardId) ) {
-          return  Pair.of(cmSetId, cmCardId);
-        }
-        return null;
-      }
-
-    }
-    return  null;
-  }
 
   private Map<String, TCGWatcherSetModel> mergeSets(
       Map<String, TCGWatcherSetModel> setsFromTCGDexRaw,
@@ -402,7 +341,6 @@ public class TCGMapperService {
 
           var series = findOrCreateSeriesByName(tcgWatcherSetModel.getSeries());
 
-          normalSet.setCmSetId(card.getCmSetId());
           normalSet.setCode(setCode);
           normalSet.setId(tcgWatcherSetModel.getId());
           var setModelNames = tcgWatcherSetModel.getNames();
@@ -425,8 +363,7 @@ public class TCGMapperService {
         normalCard.setNameDe(cardNames.get("de"));
         normalCard.setNameEn(cardNames.get("en"));
         normalCard.setNameFr(cardNames.get("fr"));
-        normalCard.setCmCardId(card.getCmCardId());
-        normalCard.setCmSetId(card.getCmSetId());
+        normalCard.setSetId(card.getSetId());
 
 
         ftsCard.setId(card.getId());

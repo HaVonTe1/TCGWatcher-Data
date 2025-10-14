@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.dktutzer.tcgwatcher.data.data.model.TCGDataSetModel;
 import de.dktutzer.tcgwatcher.data.data.model.TCGWatcherCardModel;
+import de.dktutzer.tcgwatcher.data.data.model.TCGWatcherSeriesModel;
 import de.dktutzer.tcgwatcher.data.data.model.TCGWatcherSetModel;
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,47 +33,25 @@ public class TCGDataReader {
     Map<String, TCGWatcherSetModel> result = new HashMap<>();
     var jsonString = readSetsFileIntoString();
     List<TCGDataSetModel> list = objectMapper.readValue(jsonString, new TypeReference<>(){});
-    list.forEach(set -> {
-      var names = Map.of("en", set.getName());
-      var seriesMap = Map.of("en", set.getSeries());
-      var tcgWatcherSetModel = TCGWatcherSetModel.builder()
-          .id(set.getId())
-          .code(set.getPtcgoCode())
-          .numberTotal(set.getTotal())
-          .numberOfficial(set.getPrintedTotal())
-          .abbreviation(set.)
-          .series(seriesMap)
-          .names(names)
-          .build();
-      result.put(set.getId(), tcgWatcherSetModel);
-    });
+    list.forEach(
+        set -> {
+          var names = Map.of("en", set.getName());
+          var seriesMap = Map.of("en", set.getSeries());
+          var tcgWatcherSetModel =
+              TCGWatcherSetModel.builder()
+                  .id(set.getId())
+                  .code(set.getPtcgoCode())
+                  .numberTotal(set.getTotal())
+                  .numberOfficial(set.getPrintedTotal())
+                  .abbreviation("")
+                  .series( TCGWatcherSeriesModel.builder().id("").names(seriesMap).build())
+                  .names(names)
+                  .build();
+          result.put(set.getId(), tcgWatcherSetModel);
+        });
 
     return result;
 
-  }
-
-  public Map<String, TCGWatcherCardModel> readCardsFromFile() throws IOException {
-
-
-    ZipFile zipFile = new ZipFile("src/main/resources/cards_en.zip");
-    Enumeration<? extends ZipEntry> entries = zipFile.entries();
-
-    while(entries.hasMoreElements()){
-      ZipEntry entry = entries.nextElement();
-      InputStream stream = zipFile.getInputStream(entry);
-      StringBuilder stringBuilder = new StringBuilder();
-
-      Scanner s = new Scanner(stream).useDelimiter("\\A");
-      String result = s.hasNext() ? s.next() : "";
-      stringBuilder.append(result);
-      stream.close();
-      var fileContentAsString = stringBuilder.toString();
-      List<TCGData> list = objectMapper.readValue(jsonString, new TypeReference<>(){});
-
-    }
-    zipFile.close();
-
-    return
   }
 
   public  String readSetsFileIntoString() throws IOException {
