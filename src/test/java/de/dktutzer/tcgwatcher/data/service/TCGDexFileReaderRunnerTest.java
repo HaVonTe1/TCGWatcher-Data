@@ -4,14 +4,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import de.dktutzer.tcgwatcher.data.data.model.DexSeriesData;
 
 public class TCGDexFileReaderRunnerTest {
 
   @Test
   void runReaderAndPrintSummary() throws Exception {
-    var service = new TCGDexFileReaderService();
     String base = "src/main/resources/dexdata";
-    Map<String, TCGDexFileReaderService.SeriesData> series = service.readAllSeries(base);
+    Map<String, DexSeriesData> series = TCGDexService.readAllSeries(base);
     assertNotNull(series);
     int totalSeries = series.size();
     int totalSets = series.values().stream().mapToInt(s -> s.sets().size()).sum();

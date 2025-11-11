@@ -13,61 +13,24 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+
+import de.dktutzer.tcgwatcher.data.data.model.DexCardData;
+import de.dktutzer.tcgwatcher.data.data.model.DexSetData;
+import de.dktutzer.tcgwatcher.data.data.model.DexSeriesData;
 
 /**
  * Utility to read a pokeapi TypeScript data dump and produce a nested map structure:
  * Series -> Sets -> Cards
  */
-public class TCGDexFileReaderService {
+public class TCGDexService {
 
   private static final Pattern NAME_SIMPLE = Pattern.compile("name\\s*[:=]\\s*['\"]([^'\"]+)['\"]");
   private static final Pattern NAME_EN_IN_OBJ = Pattern.compile("name\\s*[:=]\\s*\\{[^}]*en\\s*[:=]\\s*['\"]([^'\"]+)['\"]", Pattern.DOTALL);
   private static final Pattern ID_SIMPLE = Pattern.compile("id\\s*[:=]\\s*['\"]([^'\"]+)['\"]");
   private static final Pattern PROPERTY_SIMPLE = Pattern.compile("(\\w+)\\s*[:=]\\s*(\\{[^}]*\\}|\\[[^\\]]*\\]|'[^']*'|\"[^\"]*\"|[^,\\n]+)", Pattern.DOTALL);
 
-  // enriched typed records for Series/Set/Card matching common fields found in TS files
-  public record CardData(
-      String id,
-      Map<String,String> names,
-      String number,
-      String supertype,
-      List<String> subtypes,
-      String rarity,
-      String hp,
-      List<String> types,
-      Map<String,String> evolveFrom,
-      String stage,
-      List<Map<String,String>> abilities,
-      List<Map<String,String>> attacks,
-      List<Map<String, String>> weaknesses,
-      List<Map<String, String>> resistances,
-      List<String> retreatCost,
-      Integer retreat,
-      Integer convertedRetreatCost,
-      String artist,
-      Map<String,String> description,
-      Map<String,String> thirdParty,
-      List<Integer> dexId,
-      Path sourceFile) {}
-
-  public record SetData(
-      String id,
-      Map<String,String> name,
-      String seriesId,
-      Integer printedTotal,
-      Integer total,
-      String releaseDate,
-      String tcgOnline,
-      Map<String,String> abbreviations,
-      Map<String,String> thirdParty,
-      Map<String, String> images,
-      Map<String, CardData> cards) {}
-
-  public record SeriesData(
-      String id,
-      Map<String,String> name,
-      Map<String, SetData> sets) {}
+  private TCGDexService() {
+  }
 
   /**
    * Read the given base directory and build a map of series -> sets -> cards.
@@ -76,18 +39,18 @@ public class TCGDexFileReaderService {
    * @return map keyed by series id or folder name
    * @throws IOException on IO errors
    */
-  public Map<String, SeriesData> readAllSeries(String baseDirPath) throws IOException {
+  public static Map<String, DexSeriesData> readAllSeries(String baseDirPath) throws IOException {
     Path base = Paths.get(baseDirPath);
     if (!Files.isDirectory(base)) {
       return Collections.emptyMap();
     }
 
-    Map<String, SeriesData> seriesMap = new HashMap<>();
+    Map<String, DexSeriesData> seriesMap = new HashMap<>();
     Map<String, Map<String, String>> seriesPropsMap = new HashMap<>();
 
     // First, read all .ts files in the base dir - these usually contain series metadata
     try (var stream = Files.list(base)) {
-      List<Path> entries = stream.collect(Collectors.toList());
+      List<Path> entries = stream.toList();
       // process files to gather series metadata
       for (Path p : entries) {
         if (Files.isRegularFile(p) && p.toString().endsWith(".ts")) {
@@ -97,7 +60,7 @@ public class TCGDexFileReaderService {
           Map<String,String> nameMap = extractLocalizedMap(content, "name");
           Map<String, String> props = parseProperties(content);
           // initialize series with empty sets; sets will be filled from subfolders
-          seriesMap.putIfAbsent(id, new SeriesData(id, nameMap.isEmpty() ? Map.of("en", nameStr) : nameMap, new HashMap<>()));
+          seriesMap.putIfAbsent(id, new DexSeriesData(id, nameMap.isEmpty() ? Map.of("en", nameStr) : nameMap, new HashMap<>()));
           seriesPropsMap.putIfAbsent(id, props);
         }
       }
@@ -107,12 +70,12 @@ public class TCGDexFileReaderService {
         if (Files.isDirectory(p)) {
           String seriesFolderName = p.getFileName().toString();
           // determine series id: prefer existing seriesMap key that equals folder name, otherwise use folder name
-          SeriesData series = seriesMap.getOrDefault(seriesFolderName, new SeriesData(seriesFolderName, Map.of("en", seriesFolderName), new HashMap<>()));
+          DexSeriesData series = seriesMap.getOrDefault(seriesFolderName, new DexSeriesData(seriesFolderName, Map.of("en", seriesFolderName), new HashMap<>()));
 
           // scan sets inside series folder
-          Map<String, SetData> sets = series.sets();
+          Map<String, DexSetData> sets = series.sets();
           try (var setStream = Files.list(p)) {
-            for (Path setPath : setStream.collect(Collectors.toList())) {
+            for (Path setPath : setStream.toList()) {
               if (Files.isDirectory(setPath)) {
                 String setId = setPath.getFileName().toString();
                 // attempt to find metadata file for set (index.ts or <setId>.ts)
@@ -127,10 +90,10 @@ public class TCGDexFileReaderService {
                   setRaw = setContent;
                 }
 
-                Map<String, CardData> cards = new HashMap<>();
+                Map<String, DexCardData> cards = new HashMap<>();
                 // read .ts files inside set folder (cards)
                 try (var cardStream = Files.list(setPath)) {
-                  for (Path cardFile : cardStream.collect(Collectors.toList())) {
+                  for (Path cardFile : cardStream.toList()) {
                     if (Files.isRegularFile(cardFile) && cardFile.toString().endsWith(".ts")) {
                       String cardContent = readFileSafe(cardFile);
                       String cardId = extractIdFromContent(cardContent).orElse(stripExt(cardFile.getFileName().toString()));
@@ -165,7 +128,7 @@ public class TCGDexFileReaderService {
 
                       cards.put(
                           cardId,
-                          new CardData(
+                          new DexCardData(
                               cardId,
                               cardNames,
                               number,
@@ -206,7 +169,7 @@ public class TCGDexFileReaderService {
                 Map<String,String> thirdPartySet = parseSubObject(setRaw, "thirdParty");
                 sets.put(
                     setId,
-                    new SetData(
+                    new DexSetData(
                         setId,
                         nameMap.isEmpty() ? Map.of("en", setName) : nameMap,
                         seriesIdRef,
@@ -224,7 +187,7 @@ public class TCGDexFileReaderService {
 
           Map<String,String> seriesNameMap = extractLocalizedMap(seriesPropsMap.getOrDefault(series.id(), Map.of()).toString(), "name");
           String fallbackSeriesEn = series.name() != null && series.name().get("en") != null ? series.name().get("en") : series.id();
-          seriesMap.put(series.id(), new SeriesData(series.id(), seriesNameMap.isEmpty() ? Map.of("en", fallbackSeriesEn) : seriesNameMap, sets));
+          seriesMap.put(series.id(), new DexSeriesData(series.id(), seriesNameMap.isEmpty() ? Map.of("en", fallbackSeriesEn) : seriesNameMap, sets));
          }
        }
      }
@@ -356,8 +319,18 @@ public class TCGDexFileReaderService {
     for (var e : props.entrySet()) {
       String key = e.getKey();
       String val = e.getValue();
-      if (key != null && val != null && key.toLowerCase().contains("image")) {
-        images.put(key, unquote(val.trim()));
+      if (key == null || val == null) continue;
+      if (key.toLowerCase().contains("image")) {
+        String v = val.trim();
+        if (v.startsWith("{") && v.endsWith("}")) {
+          String inner = v.substring(1, v.length() - 1);
+          Matcher pm = Pattern.compile("(\\w+)\\s*[:=]\\s*('(?:[^']*)'|\"(?:[^\"]*)\")").matcher(inner);
+          while (pm.find()) {
+            images.put(pm.group(1), unquote(pm.group(2)));
+          }
+        } else {
+          images.put(key, unquote(v));
+        }
       }
     }
     return images;
