@@ -49,6 +49,9 @@ public class TCGMapperService {
 
   @Value("${app.dex.data.dir}")
   private String dexDataDir;
+  @Value("${app.external.csv.path}")
+  private String csvPath;
+
 
   // cache loaded lazily from resources
   private volatile Map<String, String> cmProductIdToCodeCache = null;
@@ -156,14 +159,14 @@ public class TCGMapperService {
         }
 
         Integer numberOfficial = set.cardCount() !=null ? set.cardCount(): 0;
-        Integer numberTotal = 0; //needs to be read from tcgdata
+        Integer numberTotal = set.cards().size();
         Map<String, String> names = set.name() == null ? Map.of() : set.name();
         var cmId = set.thirdParty().getOrDefault("cardmarket","");
         var tcgpId = set.thirdParty().getOrDefault("tcgplayer","");
 
         var model = TCGWatcherSetModel.builder()
             .id(set.id())
-            .numberTotal(0)
+            .numberTotal(numberTotal)
             .numberOfficial(numberOfficial)
             .code(code)
             .abbreviation(abbreviation)
@@ -197,7 +200,7 @@ public class TCGMapperService {
 
           String cmProductId = thirdParty.get("cardmarket");
           String tcgpId = thirdParty.get("tcgplayer");
-          String cmCode = ""; //needs to read from the csv
+          String cmCode = readCardmarketCodeFromCSVByProductId(cmProductId); //needs to read from the csv
 
           var model = TCGWatcherCardModel.builder()
               .id(card.id())
@@ -230,7 +233,7 @@ public class TCGMapperService {
     if (cmProductIdToCodeCache != null) return;
     Map<String,String> map = new ConcurrentHashMap<>();
 
-    InputStream is = getClass().getClassLoader().getResourceAsStream("product-id-to-url-cardmarket.csv.zip");
+    InputStream is = getClass().getClassLoader().getResourceAsStream(csvPath);
     if (is == null) {
       // resource not present
       cmProductIdToCodeCache = map;

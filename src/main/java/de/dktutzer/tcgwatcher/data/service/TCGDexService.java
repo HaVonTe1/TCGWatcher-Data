@@ -85,7 +85,7 @@ public class TCGDexService {
                 String setName = setId;
                 String setRaw = "";
                 Map<String, String> setProps = Map.of();
-                Optional<Path> maybeMeta = findFile(setPath, setId + ".ts").or(() -> findFile(setPath, "index.ts"));
+                Optional<Path> maybeMeta = findFile(p, setId + ".ts").or(() -> findFile(setPath, "index.ts"));
                 if (maybeMeta.isPresent()) {
                   String setContent = readFileSafe(maybeMeta.get());
                   setName = Optional.ofNullable(extractNameEn(setContent)).orElse(setName);
@@ -99,7 +99,7 @@ public class TCGDexService {
                   for (Path cardFile : cardStream.toList()) {
                     if (Files.isRegularFile(cardFile) && cardFile.toString().endsWith(".ts")) {
                       String cardContent = readFileSafe(cardFile);
-                      String cardId = extractIdFromContent(cardContent).orElse(stripExt(cardFile.getFileName().toString()));
+                      String cardId = stripExt(cardFile.getFileName().toString());
                       Map<String, String> cardProps = parseProperties(cardContent);
 
                       Map<String,String> cardNames = extractLocalizedMap(cardContent, "name");
@@ -114,7 +114,7 @@ public class TCGDexService {
                       Integer retreat = getInteger(cardProps, "retreat");
 
                       // build typed fields from props
-                      String number = getString(cardProps, "number");
+
                       String supertype = getString(cardProps, "supertype");
                       List<String> subtypes = getList(cardProps, "subtypes");
                       String rarity = getString(cardProps, "rarity");
@@ -131,7 +131,7 @@ public class TCGDexService {
                           new DexCardData(
                               cardId,
                               cardNames,
-                              number,
+                              cardId,
                               supertype,
                               subtypes,
                               rarity,
@@ -157,7 +157,7 @@ public class TCGDexService {
 
                 // attempt to fill set images map from setProps
                 Map<String, String> images = extractImages(setProps);
-                String seriesIdRef = getString(setProps, "series");
+                String seriesIdRef = series.id();
                 String releaseDate = getString(setProps, "releaseDate");
                 String releaseDateIso8601 = StringUtils.hasText(releaseDate) ? LocalDate.parse(releaseDate)
                     .atStartOfDay()
@@ -167,7 +167,7 @@ public class TCGDexService {
                 Map<String,String> abbreviations = parseSubObject(setRaw, "abbreviations");
                 Map<String,String> thirdPartySet = parseSubObject(setRaw, "thirdParty");
                 Map<String, String> cardCount = parseSubObject(setRaw, "cardCount");
-                String ptcgoCode = getString(setProps, "ptcgoCode");
+                String ptcgoCode = getString(setProps, "tcgOnline");
                 Integer officialCardCount =  getInteger(cardCount, "official");
                 sets.put(
                     setId,

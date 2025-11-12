@@ -33,3 +33,5 @@ build/
 .vscode/
 
 .env
+/src/main/resources/product-id-to-url-cardmarket.csv.zip
+/src/main/resources/dexdata/
