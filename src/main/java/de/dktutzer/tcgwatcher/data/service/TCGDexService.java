@@ -22,18 +22,21 @@ import de.dktutzer.tcgwatcher.data.data.model.DexSeriesData;
 import org.springframework.util.StringUtils;
 
 /**
- * Utility to read a pokeapi TypeScript data dump and produce a nested map structure:
- * Series -> Sets -> Cards
+ * Utility to read a pokeapi TypeScript data dump and produce a nested map structure: Series -> Sets
+ * -> Cards
  */
 public class TCGDexService {
 
   private static final Pattern NAME_SIMPLE = Pattern.compile("name\\s*[:=]\\s*['\"]([^'\"]+)['\"]");
-  private static final Pattern NAME_EN_IN_OBJ = Pattern.compile("name\\s*[:=]\\s*\\{[^}]*en\\s*[:=]\\s*['\"]([^'\"]+)['\"]", Pattern.DOTALL);
+  private static final Pattern NAME_EN_IN_OBJ =
+      Pattern.compile("name\\s*[:=]\\s*\\{[^}]*en\\s*[:=]\\s*['\"]([^'\"]+)['\"]", Pattern.DOTALL);
   private static final Pattern ID_SIMPLE = Pattern.compile("id\\s*[:=]\\s*['\"]([^'\"]+)['\"]");
-  private static final Pattern PROPERTY_SIMPLE = Pattern.compile("(\\w+)\\s*[:=]\\s*(\\{[^}]*\\}|\\[[^\\]]*\\]|'[^']*'|\"[^\"]*\"|[^,\\n]+)", Pattern.DOTALL);
+  private static final Pattern PROPERTY_SIMPLE =
+      Pattern.compile(
+          "(\\w+)\\s*[:=]\\s*(\\{[^}]*\\}|\\[[^\\]]*\\]|'[^']*'|\"[^\"]*\"|[^,\\n]+)",
+          Pattern.DOTALL);
 
-  private TCGDexService() {
-  }
+  private TCGDexService() {}
 
   /**
    * Read the given base directory and build a map of series -> sets -> cards.
@@ -49,7 +52,6 @@ public class TCGDexService {
     }
 
     Map<String, DexSeriesData> seriesMap = new HashMap<>();
-    Map<String, Map<String, String>> seriesPropsMap = new HashMap<>();
 
     // First, read all .ts files in the base dir - these usually contain series metadata
     try (var stream = Files.list(base)) {
@@ -58,38 +60,41 @@ public class TCGDexService {
       for (Path p : entries) {
         if (Files.isRegularFile(p) && p.toString().endsWith(".ts")) {
           String content = readFileSafe(p);
-          String id = extractIdFromContent(content).orElse(stripExt(p.getFileName().toString()));
-          String nameStr = Optional.ofNullable(extractNameEn(content)).orElse(stripExt(p.getFileName().toString()));
-          Map<String,String> nameMap = extractLocalizedMap(content, "name");
-          Map<String, String> props = parseProperties(content);
+          String seriesId = extractIdFromContent(content).get();
+          String seriesFolderName = stripExt(p.getFileName().toString());
+          Map<String, String> seriesNameMap = extractLocalizedMap(content, "name");
           // initialize series with empty sets; sets will be filled from subfolders
-          seriesMap.putIfAbsent(id, new DexSeriesData(id, nameMap.isEmpty() ? Map.of("en", nameStr) : nameMap, new HashMap<>()));
-          seriesPropsMap.putIfAbsent(id, props);
-        }
-      }
+          seriesMap.putIfAbsent(
+              seriesId,
+              new DexSeriesData(
+                  seriesId,
+                  seriesNameMap.isEmpty() ? Map.of("en", seriesFolderName) : seriesNameMap,
+                  new HashMap<>()));
 
-      // process directories - each directory that matches a series name contains sets
-      for (Path p : entries) {
-        if (Files.isDirectory(p)) {
-          String seriesFolderName = p.getFileName().toString();
-          // determine series id: prefer existing seriesMap key that equals folder name, otherwise use folder name
-          DexSeriesData series = seriesMap.getOrDefault(seriesFolderName, new DexSeriesData(seriesFolderName, Map.of("en", seriesFolderName), new HashMap<>()));
+          DexSeriesData series = seriesMap.get(seriesId);
 
           // scan sets inside series folder
           Map<String, DexSetData> sets = series.sets();
-          try (var setStream = Files.list(p)) {
-            for (Path setPath : setStream.toList()) {
+          var seriesPath = Paths.get(base + "/" + seriesFolderName);
+          try (var setStream = Files.list(seriesPath)) {
+            var setStreamList = setStream.toList();
+            for (Path setPath : setStreamList) {
               if (Files.isDirectory(setPath)) {
-                String setId = setPath.getFileName().toString();
+                String setId = "";
                 // attempt to find metadata file for set (index.ts or <setId>.ts)
-                String setName = setId;
+                String setName = setPath.getFileName().toString();
                 String setRaw = "";
                 Map<String, String> setProps = Map.of();
-                Optional<Path> maybeMeta = findFile(p, setId + ".ts").or(() -> findFile(setPath, "index.ts"));
+                Optional<Path> maybeMeta = findFile(seriesPath, setName + ".ts");
                 if (maybeMeta.isPresent()) {
                   String setContent = readFileSafe(maybeMeta.get());
                   setName = Optional.ofNullable(extractNameEn(setContent)).orElse(setName);
                   setProps = parseProperties(setContent);
+                  setId = getString(setProps,"id");
+                  if (setId.isEmpty())
+                  {
+                    setId = setName;
+                  }
                   setRaw = setContent;
                 }
 
@@ -102,15 +107,22 @@ public class TCGDexService {
                       String cardId = stripExt(cardFile.getFileName().toString());
                       Map<String, String> cardProps = parseProperties(cardContent);
 
-                      Map<String,String> cardNames = extractLocalizedMap(cardContent, "name");
+                      Map<String, String> cardNames = extractLocalizedMap(cardContent, "name");
                       List<Integer> dexId = getIntegerListFromContent(cardContent, "dexId");
-                      Map<String,String> evolveFrom = extractLocalizedMap(cardContent, "evolveFrom");
-                      if (evolveFrom.isEmpty()) evolveFrom = extractLocalizedMap(cardContent, "evolvesFrom");
-                      Map<String,String> description = extractLocalizedMap(cardContent, "description");
-                      List<Map<String,String>> abilities = getNestedObjectsAsMaps(cardContent, "abilities");
-                      List<Map<String,String>> attacks = getNestedObjectsAsMaps(cardContent, "attacks");
-                      List<Map<String,String>> weaknessesObj = getNestedObjectsAsMaps(cardContent, "weaknesses");
-                      List<Map<String,String>> resistancesObj = getNestedObjectsAsMaps(cardContent, "resistances");
+                      Map<String, String> evolveFrom =
+                          extractLocalizedMap(cardContent, "evolveFrom");
+                      if (evolveFrom.isEmpty())
+                        evolveFrom = extractLocalizedMap(cardContent, "evolvesFrom");
+                      Map<String, String> description =
+                          extractLocalizedMap(cardContent, "description");
+                      List<Map<String, String>> abilities =
+                          getNestedObjectsAsMaps(cardContent, "abilities");
+                      List<Map<String, String>> attacks =
+                          getNestedObjectsAsMaps(cardContent, "attacks");
+                      List<Map<String, String>> weaknessesObj =
+                          getNestedObjectsAsMaps(cardContent, "weaknesses");
+                      List<Map<String, String>> resistancesObj =
+                          getNestedObjectsAsMaps(cardContent, "resistances");
                       Integer retreat = getInteger(cardProps, "retreat");
 
                       // build typed fields from props
@@ -124,7 +136,8 @@ public class TCGDexService {
                       List<String> retreatCost = getList(cardProps, "retreatCost");
                       Integer convertedRetreatCost = getInteger(cardProps, "convertedRetreatCost");
                       String artist = getString(cardProps, "illustrator");
-                      Map<String,String> thirdPartyProps = parseSubObject(cardContent, "thirdParty");
+                      Map<String, String> thirdPartyProps =
+                          parseSubObject(cardContent, "thirdParty");
 
                       cards.put(
                           cardId,
@@ -159,16 +172,19 @@ public class TCGDexService {
                 Map<String, String> images = extractImages(setProps);
                 String seriesIdRef = series.id();
                 String releaseDate = getString(setProps, "releaseDate");
-                String releaseDateIso8601 = StringUtils.hasText(releaseDate) ? LocalDate.parse(releaseDate)
-                    .atStartOfDay()
-                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")) : "";
+                String releaseDateIso8601 =
+                    StringUtils.hasText(releaseDate)
+                        ? LocalDate.parse(releaseDate)
+                            .atStartOfDay()
+                            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"))
+                        : "";
 
-                Map<String,String> nameMap = extractLocalizedMap(setRaw, "name");
-                Map<String,String> abbreviations = parseSubObject(setRaw, "abbreviations");
-                Map<String,String> thirdPartySet = parseSubObject(setRaw, "thirdParty");
+                Map<String, String> nameMap = extractLocalizedMap(setRaw, "name");
+                Map<String, String> abbreviations = parseSubObject(setRaw, "abbreviations");
+                Map<String, String> thirdPartySet = parseSubObject(setRaw, "thirdParty");
                 Map<String, String> cardCount = parseSubObject(setRaw, "cardCount");
                 String ptcgoCode = getString(setProps, "tcgOnline");
-                Integer officialCardCount =  getInteger(cardCount, "official");
+                Integer officialCardCount = getInteger(cardCount, "official");
                 sets.put(
                     setId,
                     new DexSetData(
@@ -182,24 +198,20 @@ public class TCGDexService {
                         thirdPartySet,
                         images,
                         cards));
-               }
-             }
-           }
+              }
+            }
+          }
+        }
+      }
+    }
 
-          Map<String,String> seriesNameMap = extractLocalizedMap(seriesPropsMap.getOrDefault(series.id(), Map.of()).toString(), "name");
-          String fallbackSeriesEn = series.name() != null && series.name().get("en") != null ? series.name().get("en") : series.id();
-          seriesMap.put(series.id(), new DexSeriesData(series.id(), seriesNameMap.isEmpty() ? Map.of("en", fallbackSeriesEn) : seriesNameMap, sets));
-         }
-       }
-     }
-
-     return seriesMap;
-   }
+    return seriesMap;
+  }
 
   // --- helpers to extract structured pieces
 
-  private static Map<String,String> extractLocalizedMap(String content, String key) {
-    Map<String,String> result = new HashMap<>();
+  private static Map<String, String> extractLocalizedMap(String content, String key) {
+    Map<String, String> result = new HashMap<>();
     if (content == null || content.isBlank()) return result;
     Matcher m = Pattern.compile(key + "\\s*[:=]\\s*\\{([^}]*)\\}", Pattern.DOTALL).matcher(content);
     if (m.find()) {
@@ -215,7 +227,8 @@ public class TCGDexService {
   private static List<Integer> getIntegerListFromContent(String content, String key) {
     List<Integer> list = new ArrayList<>();
     if (content == null || content.isBlank()) return list;
-    Matcher m = Pattern.compile(key + "\\s*[:=]\\s*\\[([^\\]]*)\\]", Pattern.DOTALL).matcher(content);
+    Matcher m =
+        Pattern.compile(key + "\\s*[:=]\\s*\\[([^\\]]*)\\]", Pattern.DOTALL).matcher(content);
     if (m.find()) {
       String inner = m.group(1);
       for (String part : inner.split(",")) {
@@ -229,10 +242,11 @@ public class TCGDexService {
     return list;
   }
 
-  private static List<Map<String,String>> getNestedObjectsAsMaps(String content, String key) {
-    List<Map<String,String>> result = new ArrayList<>();
+  private static List<Map<String, String>> getNestedObjectsAsMaps(String content, String key) {
+    List<Map<String, String>> result = new ArrayList<>();
     if (content == null || content.isBlank()) return result;
-    Matcher m = Pattern.compile(key + "\\s*[:=]\\s*\\[([^\\]]*)\\]", Pattern.DOTALL).matcher(content);
+    Matcher m =
+        Pattern.compile(key + "\\s*[:=]\\s*\\[([^\\]]*)\\]", Pattern.DOTALL).matcher(content);
     if (m.find()) {
       String inner = m.group(1).trim();
       // split by '},{' roughly
@@ -242,9 +256,13 @@ public class TCGDexService {
         if (!obj.startsWith("{")) obj = "{" + obj;
         if (!obj.endsWith("}")) obj = obj + "}";
         // remove surrounding braces
-        String body = obj.substring(1, obj.length()-1);
-        Map<String,String> props = new HashMap<>();
-        Matcher pm = Pattern.compile("(\\w+)\\s*[:=]\\s*('(?:[^']*)'|\"(?:[^\"]*)\"|\\[[^\\]]*\\]|\\{[^}]*\\}|[^,\\n]+)", Pattern.DOTALL).matcher(body);
+        String body = obj.substring(1, obj.length() - 1);
+        Map<String, String> props = new HashMap<>();
+        Matcher pm =
+            Pattern.compile(
+                    "(\\w+)\\s*[:=]\\s*('(?:[^']*)'|\"(?:[^\"]*)\"|\\[[^\\]]*\\]|\\{[^}]*\\}|[^,\\n]+)",
+                    Pattern.DOTALL)
+                .matcher(body);
         while (pm.find()) {
           String k = pm.group(1);
           String v = pm.group(2).trim();
@@ -256,13 +274,15 @@ public class TCGDexService {
     return result;
   }
 
-  private static Map<String,String> parseSubObject(String content, String key) {
-    Map<String,String> res = new HashMap<>();
+  private static Map<String, String> parseSubObject(String content, String key) {
+    Map<String, String> res = new HashMap<>();
     if (content == null || content.isBlank()) return res;
     Matcher m = Pattern.compile(key + "\\s*[:=]\\s*\\{([^}]*)\\}", Pattern.DOTALL).matcher(content);
     if (m.find()) {
       String inner = m.group(1);
-      Matcher pm = Pattern.compile("(\\w+)\\s*[:=]\\s*('(?:[^']*)'|\"(?:[^\"]*)\"|[^,\\n]+)", Pattern.DOTALL).matcher(inner);
+      Matcher pm =
+          Pattern.compile("(\\w+)\\s*[:=]\\s*('(?:[^']*)'|\"(?:[^\"]*)\"|[^,\\n]+)", Pattern.DOTALL)
+              .matcher(inner);
       while (pm.find()) {
         res.put(pm.group(1), unquote(pm.group(2).trim()));
       }
@@ -273,7 +293,8 @@ public class TCGDexService {
   private static String unquote(String value) {
     if (value == null) return null;
     value = value.trim();
-    if ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith("\"") && value.endsWith("\""))) {
+    if ((value.startsWith("'") && value.endsWith("'"))
+        || (value.startsWith("\"") && value.endsWith("\""))) {
       return value.substring(1, value.length() - 1);
     }
     return value;
@@ -325,7 +346,8 @@ public class TCGDexService {
         String v = val.trim();
         if (v.startsWith("{") && v.endsWith("}")) {
           String inner = v.substring(1, v.length() - 1);
-          Matcher pm = Pattern.compile("(\\w+)\\s*[:=]\\s*('(?:[^']*)'|\"(?:[^\"]*)\")").matcher(inner);
+          Matcher pm =
+              Pattern.compile("(\\w+)\\s*[:=]\\s*('(?:[^']*)'|\"(?:[^\"]*)\")").matcher(inner);
           while (pm.find()) {
             images.put(pm.group(1), unquote(pm.group(2)));
           }
@@ -389,5 +411,4 @@ public class TCGDexService {
     if (m.find()) return m.group(1);
     return null;
   }
-
 }

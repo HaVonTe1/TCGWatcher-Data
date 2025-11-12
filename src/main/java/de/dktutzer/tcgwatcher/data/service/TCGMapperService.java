@@ -146,12 +146,12 @@ public class TCGMapperService {
       for (DexSetData set : seriesData.sets().values()) {
         if (set == null) continue;
 
-        String code = set.id().toUpperCase(Locale.ROOT); //fallback if no matching abbr
+        String code = set.ptcgoCode();
 
         String abbreviation = "";
         if (set.abbreviations() != null && !set.abbreviations().isEmpty()) {
           // prefer english abbrev if present, otherwise take first available
-          abbreviation = set.abbreviations().getOrDefault("en", set.abbreviations().values().stream().findFirst().orElse(""));
+          abbreviation = set.abbreviations().getOrDefault("official", set.abbreviations().values().stream().findFirst().orElse(""));
         }
 
         if (!hasText(code)) {
