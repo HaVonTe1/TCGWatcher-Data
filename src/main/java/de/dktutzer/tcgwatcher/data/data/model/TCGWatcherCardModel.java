@@ -18,9 +18,9 @@ public class TCGWatcherCardModel {
 
   private String number; //the official card number
 
-  private String cmProductId; //Cardmarket product id
+  private String cmProductId; //Cardmarket product id like '273537'
   private String tcgpId; //TCGPlayer id
-  private String cmCode; //cardmarket code
+  private String cmCode; //cardmarket code like 'reecko-PRC6'
 
 
 }

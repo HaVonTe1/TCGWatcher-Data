@@ -32,7 +32,7 @@ public class TCGDexFileReaderServiceIntegrationTest {
     // create set folder with metadata
     Path setFolder = seriesFolder.resolve("set1");
     Files.createDirectories(setFolder);
-    String setContent = "id: 'set1'\nname: { en: 'First Set' }\nprintedTotal: 100\nptcgoCode: 'P1'\nimages: { symbol: 'img.png' }\n";
+    String setContent = "id: 'set1'\nname: { en: 'First Set' }\ncardCount: { official: 100 } \nptcgoCode: 'P1'\nimages: { symbol: 'img.png' }\n";
     Files.writeString(setFolder.resolve("set1.ts"), setContent, StandardCharsets.UTF_8);
 
     // create card file
@@ -52,7 +52,7 @@ public class TCGDexFileReaderServiceIntegrationTest {
 
     DexSetData set = series.sets().get("set1");
     assertEquals("First Set", set.name().get("en"));
-    assertEquals(Integer.valueOf(100), set.printedTotal());
+    assertEquals(Integer.valueOf(100), set.cardCount());
     assertEquals("P1", set.ptcgoCode());
     assertEquals("img.png", set.images().get("symbol"));
 

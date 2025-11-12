@@ -5,6 +5,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -17,6 +19,7 @@ import java.util.regex.Pattern;
 import de.dktutzer.tcgwatcher.data.data.model.DexCardData;
 import de.dktutzer.tcgwatcher.data.data.model.DexSetData;
 import de.dktutzer.tcgwatcher.data.data.model.DexSeriesData;
+import org.springframework.util.StringUtils;
 
 /**
  * Utility to read a pokeapi TypeScript data dump and produce a nested map structure:
@@ -97,7 +100,6 @@ public class TCGDexService {
                     if (Files.isRegularFile(cardFile) && cardFile.toString().endsWith(".ts")) {
                       String cardContent = readFileSafe(cardFile);
                       String cardId = extractIdFromContent(cardContent).orElse(stripExt(cardFile.getFileName().toString()));
-                      String cardName = Optional.ofNullable(extractNameEn(cardContent)).orElse(stripExt(cardFile.getFileName().toString()));
                       Map<String, String> cardProps = parseProperties(cardContent);
 
                       Map<String,String> cardNames = extractLocalizedMap(cardContent, "name");
@@ -105,7 +107,6 @@ public class TCGDexService {
                       Map<String,String> evolveFrom = extractLocalizedMap(cardContent, "evolveFrom");
                       if (evolveFrom.isEmpty()) evolveFrom = extractLocalizedMap(cardContent, "evolvesFrom");
                       Map<String,String> description = extractLocalizedMap(cardContent, "description");
-                      Map<String,String> thirdParty = parseSubObject(cardContent, "thirdParty");
                       List<Map<String,String>> abilities = getNestedObjectsAsMaps(cardContent, "abilities");
                       List<Map<String,String>> attacks = getNestedObjectsAsMaps(cardContent, "attacks");
                       List<Map<String,String>> weaknessesObj = getNestedObjectsAsMaps(cardContent, "weaknesses");
@@ -124,7 +125,6 @@ public class TCGDexService {
                       Integer convertedRetreatCost = getInteger(cardProps, "convertedRetreatCost");
                       String artist = getString(cardProps, "illustrator");
                       Map<String,String> thirdPartyProps = parseSubObject(cardContent, "thirdParty");
-                      String category = getString(cardProps, "category");
 
                       cards.put(
                           cardId,
@@ -157,25 +157,26 @@ public class TCGDexService {
 
                 // attempt to fill set images map from setProps
                 Map<String, String> images = extractImages(setProps);
-                Integer printedTotal = getInteger(setProps, "printedTotal");
-                Integer total = getInteger(setProps, "total");
                 String seriesIdRef = getString(setProps, "series");
-                String seriesNameRef = getString(setProps, "seriesName");
                 String releaseDate = getString(setProps, "releaseDate");
-                String ptcgoCode = getString(setProps, "ptcgoCode");
+                String releaseDateIso8601 = StringUtils.hasText(releaseDate) ? LocalDate.parse(releaseDate)
+                    .atStartOfDay()
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")) : "";
 
                 Map<String,String> nameMap = extractLocalizedMap(setRaw, "name");
                 Map<String,String> abbreviations = parseSubObject(setRaw, "abbreviations");
                 Map<String,String> thirdPartySet = parseSubObject(setRaw, "thirdParty");
+                Map<String, String> cardCount = parseSubObject(setRaw, "cardCount");
+                String ptcgoCode = getString(setProps, "ptcgoCode");
+                Integer officialCardCount =  getInteger(cardCount, "official");
                 sets.put(
                     setId,
                     new DexSetData(
                         setId,
                         nameMap.isEmpty() ? Map.of("en", setName) : nameMap,
                         seriesIdRef,
-                        printedTotal,
-                        total,
-                        releaseDate,
+                        officialCardCount,
+                        releaseDateIso8601,
                         ptcgoCode,
                         abbreviations,
                         thirdPartySet,
