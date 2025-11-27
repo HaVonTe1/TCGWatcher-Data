@@ -16,14 +16,13 @@ import lombok.Setter;
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class PokemonCardEntity {
 
-
-  //internal id
+  // internal id
   @Id()
   @Include
   @Column(columnDefinition = "TEXT")
   private String id;
 
-  //the different names of the card in various languages
+  // the different names of the card in various languages
   @Column(name = "name_de", nullable = false, columnDefinition = "TEXT")
   private String nameDe;
   @Column(name = "name_fr", nullable = false, columnDefinition = "TEXT")
@@ -31,13 +30,23 @@ public class PokemonCardEntity {
   @Column(name = "name_en", nullable = false, columnDefinition = "TEXT")
   private String nameEn;
 
-  //the card code
-  //eg: MEG 104 for Mega-Kangaskhan-ex-V1-MEG104
+  // the card code
+  // eg: MEG 104 for Mega-Kangaskhan-ex-V1-MEG104
   @Column(nullable = false, columnDefinition = "TEXT")
   private String code;
 
+  // eg: 5347623473
+  @Column(nullable = false, columnDefinition = "TEXT")
+  private String cmProductId;
+
+  // eg: Mega-Kangaskhan-ex-V1-MEG104
+  @Column(nullable = false, columnDefinition = "TEXT")
+  private String cmPageId;
+
+  @Column(nullable = false, columnDefinition = "TEXT")
+  private String tcgpId;
+
   @Column(nullable = false, columnDefinition = "TEXT")
   private String setId;
-
 
 }

@@ -52,11 +52,8 @@ public class TCGMapperService {
   @Value("${app.external.csv.path}")
   private String csvPath;
 
-
   // cache loaded lazily from resources
   private volatile Map<String, String> cmProductIdToCodeCache = null;
-
-
 
   public void readFromFilesAndWriteToSqlite() throws IOException {
 
@@ -64,7 +61,6 @@ public class TCGMapperService {
 
     List<TCGWatcherCardModel> cards = convertDexCardsToTCGWatcherCards(dexSeriesDataMap);
     List<TCGWatcherSetModel> sets = convertDexSetsToTCGWatcherSets(dexSeriesDataMap);
-
 
     quickSearchCardsSqliteRepository.deleteAll();
     quickSearchCardsFtsSqliteRepository.deleteAll();
@@ -96,12 +92,14 @@ public class TCGMapperService {
           normalSet.setId(tcgWatcherSetModel.getId());
           var setModelNames = tcgWatcherSetModel.getNames();
           normalSet.setNameEn(setModelNames.getOrDefault("en", ""));
-          normalSet.setNameDe(setModelNames.getOrDefault("de", ""));
-          normalSet.setNameFr(setModelNames.getOrDefault("fr", ""));
+          normalSet.setNameDe(setModelNames.getOrDefault("de", setModelNames.getOrDefault("en", "")));
+          normalSet.setNameFr(setModelNames.getOrDefault("fr", setModelNames.getOrDefault("en", "")));
           normalSet.setSeries(series);
           normalSet.setOfficial(tcgWatcherSetModel.getNumberOfficial());
           normalSet.setTotal(tcgWatcherSetModel.getNumberTotal());
           normalSet.setAbbreviation(tcgWatcherSetModel.getAbbreviation());
+          normalSet.setTcgpId(tcgWatcherSetModel.getTcgpSetId());
+          normalSet.setCmProductId(tcgWatcherSetModel.getCmSetId());
 
           nomalizedSets.add(normalSet);
 
@@ -111,11 +109,13 @@ public class TCGMapperService {
         normalCard.setCode(fullCardCode);
         normalCard.setId(card.getId());
         var cardNames = card.getNames();
-        normalCard.setNameDe(cardNames.getOrDefault("de", ""));
+        normalCard.setNameDe(cardNames.getOrDefault("de", cardNames.getOrDefault("en", "")));
         normalCard.setNameEn(cardNames.getOrDefault("en", ""));
-        normalCard.setNameFr(cardNames.getOrDefault("fr", ""));
+        normalCard.setNameFr(cardNames.getOrDefault("fr", cardNames.getOrDefault("en", "")));
         normalCard.setSetId(card.getSetId());
-
+        normalCard.setCmProductId(card.getCmProductId());
+        normalCard.setCmPageId(card.getCmCode());
+        normalCard.setTcgpId(card.getTcgpId());
 
         ftsCard.setId(card.getId());
         ftsCard.setCode(card.getNumber());
@@ -130,39 +130,43 @@ public class TCGMapperService {
     quickSearchCardsSqliteRepository.saveAll(normalizedCards);
     quickSearchCardsFtsSqliteRepository.saveAll(ftsCards);
 
-
   }
 
   private List<TCGWatcherSetModel> convertDexSetsToTCGWatcherSets(Map<String, DexSeriesData> dexSeriesDataMap) {
 
     // iterate all series and their sets and convert to TCGWatcherSetModel
     List<TCGWatcherSetModel> result = new ArrayList<>();
-    if (dexSeriesDataMap == null) return result;
+    if (dexSeriesDataMap == null)
+      return result;
 
     for (DexSeriesData seriesData : dexSeriesDataMap.values()) {
-      if (seriesData == null) continue;
+      if (seriesData == null)
+        continue;
       var seriesModel = new TCGWatcherSeriesModel(seriesData.id(), seriesData.name());
-      if (seriesData.sets() == null) continue;
+      if (seriesData.sets() == null)
+        continue;
       for (DexSetData set : seriesData.sets().values()) {
-        if (set == null) continue;
+        if (set == null)
+          continue;
 
         String code = set.ptcgoCode();
 
         String abbreviation = "";
         if (set.abbreviations() != null && !set.abbreviations().isEmpty()) {
           // prefer english abbrev if present, otherwise take first available
-          abbreviation = set.abbreviations().getOrDefault("official", set.abbreviations().values().stream().findFirst().orElse(""));
+          abbreviation = set.abbreviations().getOrDefault("official",
+              set.abbreviations().values().stream().findFirst().orElse(""));
         }
 
         if (!hasText(code)) {
           code = hasText(abbreviation) ? abbreviation : null;
         }
 
-        Integer numberOfficial = set.cardCount() !=null ? set.cardCount(): 0;
+        Integer numberOfficial = set.cardCount() != null ? set.cardCount() : 0;
         Integer numberTotal = set.cards().size();
         Map<String, String> names = set.name() == null ? Map.of() : set.name();
-        var cmId = set.thirdParty().getOrDefault("cardmarket","");
-        var tcgpId = set.thirdParty().getOrDefault("tcgplayer","");
+        var cmId = set.thirdParty().getOrDefault("cardmarket", "");
+        var tcgpId = set.thirdParty().getOrDefault("tcgplayer", "");
 
         var model = TCGWatcherSetModel.builder()
             .id(set.id())
@@ -186,21 +190,25 @@ public class TCGMapperService {
   private List<TCGWatcherCardModel> convertDexCardsToTCGWatcherCards(Map<String, DexSeriesData> dexSeriesDataMap) {
 
     List<TCGWatcherCardModel> result = new ArrayList<>();
-    if (dexSeriesDataMap == null) return result;
+    if (dexSeriesDataMap == null)
+      return result;
 
     for (DexSeriesData seriesData : dexSeriesDataMap.values()) {
-      if (seriesData == null || seriesData.sets() == null) continue;
+      if (seriesData == null || seriesData.sets() == null)
+        continue;
       for (DexSetData set : seriesData.sets().values()) {
-        if (set == null || set.cards() == null) continue;
+        if (set == null || set.cards() == null)
+          continue;
         for (DexCardData card : set.cards().values()) {
-          if (card == null) continue;
+          if (card == null)
+            continue;
 
           Map<String, String> names = card.names() == null ? Map.of() : card.names();
           Map<String, String> thirdParty = card.thirdParty() == null ? Map.of() : card.thirdParty();
 
-          String cmProductId = thirdParty.get("cardmarket");
-          String tcgpId = thirdParty.get("tcgplayer");
-          String cmCode = readCardmarketCodeFromCSVByProductId(cmProductId); //needs to read from the csv
+          String cmProductId = thirdParty.getOrDefault("cardmarket", "");
+          String tcgpId = thirdParty.getOrDefault("tcgplayer", "");
+          String cmCode = readCardmarketCodeFromCSVByProductId(cmProductId); // needs to read from the csv
 
           var model = TCGWatcherCardModel.builder()
               .id(card.id())
@@ -209,7 +217,7 @@ public class TCGMapperService {
               .number(card.number())
               .cmProductId(cmProductId)
               .tcgpId(tcgpId)
-              .cmCode(cmCode)
+              .cmCode(cmCode != null ? cmCode : "")
               .build();
 
           result.add(model);
@@ -222,16 +230,19 @@ public class TCGMapperService {
 
   private String readCardmarketCodeFromCSVByProductId(String cmProductId) {
 
-    if (!hasText(cmProductId)) return null;
+    if (!hasText(cmProductId))
+      return null;
 
     ensureCmCsvLoaded();
-    if (cmProductIdToCodeCache == null) return null;
+    if (cmProductIdToCodeCache == null)
+      return null;
     return cmProductIdToCodeCache.get(cmProductId);
   }
 
   private synchronized void ensureCmCsvLoaded() {
-    if (cmProductIdToCodeCache != null) return;
-    Map<String,String> map = new ConcurrentHashMap<>();
+    if (cmProductIdToCodeCache != null)
+      return;
+    Map<String, String> map = new ConcurrentHashMap<>();
 
     InputStream is = getClass().getClassLoader().getResourceAsStream(csvPath);
     if (is == null) {
@@ -243,29 +254,37 @@ public class TCGMapperService {
     try (ZipInputStream zis = new ZipInputStream(is, StandardCharsets.UTF_8)) {
       ZipEntry entry;
       while ((entry = zis.getNextEntry()) != null) {
-        if (entry.isDirectory()) continue;
+        if (entry.isDirectory())
+          continue;
         String name = entry.getName();
-        if (name == null) continue;
-        if (!name.toLowerCase().endsWith(".csv")) continue;
+        if (name == null)
+          continue;
+        if (!name.toLowerCase().endsWith(".csv"))
+          continue;
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(zis, StandardCharsets.UTF_8))) {
           String line;
           while ((line = br.readLine()) != null) {
-            if (line.isBlank()) continue;
+            if (line.isBlank())
+              continue;
             // split into two columns only (id, url) - url may be quoted
             String[] parts = line.split(",", 2);
-            if (parts.length < 2) continue;
+            if (parts.length < 2)
+              continue;
             String id = stripQuotes(parts[0].trim());
             // skip header
-            if (id.equalsIgnoreCase("cardmarket_product_id")) continue;
+            if (id.equalsIgnoreCase("cardmarket_product_id"))
+              continue;
             String url = stripQuotes(parts[1].trim());
-            if (id.isEmpty() || url.isEmpty()) continue;
+            if (id.isEmpty() || url.isEmpty())
+              continue;
             // extract last segment after '/'
             int slash = url.lastIndexOf('/');
-            String code = (slash >= 0 && slash < url.length()-1) ? url.substring(slash+1) : url;
+            String code = (slash >= 0 && slash < url.length() - 1) ? url.substring(slash + 1) : url;
             // remove query string if any
             int q = code.indexOf('?');
-            if (q >= 0) code = code.substring(0, q);
+            if (q >= 0)
+              code = code.substring(0, q);
             if (!code.isBlank()) {
               map.put(id, code);
             }
@@ -280,10 +299,11 @@ public class TCGMapperService {
   }
 
   private static String stripQuotes(String s) {
-    if (s == null) return "";
+    if (s == null)
+      return "";
     s = s.trim();
     if ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'"))) {
-      return s.substring(1, s.length()-1);
+      return s.substring(1, s.length() - 1);
     }
     return s;
   }
@@ -296,10 +316,10 @@ public class TCGMapperService {
     }
     var pokemonSeriesEntity = new PokemonSeriesEntity();
     pokemonSeriesEntity.setId(series.getId());
-    pokemonSeriesEntity.setNameDe(series.getNames().getOrDefault("de" ,""));
+    pokemonSeriesEntity.setNameDe(series.getNames().getOrDefault("de", ""));
     pokemonSeriesEntity.setNameEn(series.getNames().getOrDefault("en", ""));
     pokemonSeriesEntity.setNameFr(series.getNames().getOrDefault("fr", ""));
     seriesSqlRepository.save(pokemonSeriesEntity);
-    return  pokemonSeriesEntity;
+    return pokemonSeriesEntity;
   }
 }
