@@ -56,12 +56,16 @@ public class TCGMapperService {
   private volatile Map<String, String> cmProductIdToCodeCache = null;
 
   public void readFromFilesAndWriteToSqlite() throws IOException {
+    log.info("Starting TCGMapperService data import from directory: {}", dexDataDir);
 
     var dexSeriesDataMap = TCGDexService.readAllSeries(dexDataDir);
+    log.info("Loaded {} series from DexService.", dexSeriesDataMap != null ? dexSeriesDataMap.size() : 0);
 
     List<TCGWatcherCardModel> cards = convertDexCardsToTCGWatcherCards(dexSeriesDataMap);
     List<TCGWatcherSetModel> sets = convertDexSetsToTCGWatcherSets(dexSeriesDataMap);
+    log.info("Converted {} cards and {} sets.", cards.size(), sets.size());
 
+    log.info("Clearing existing SQLite data...");
     quickSearchCardsSqliteRepository.deleteAll();
     quickSearchCardsFtsSqliteRepository.deleteAll();
     setsSqliteRepository.deleteAll();
@@ -126,13 +130,18 @@ public class TCGMapperService {
       }
     });
 
+    log.info("Prepared {} normalized cards, {} FTS cards, and {} normalized sets for persistence.",
+        normalizedCards.size(), ftsCards.size(), nomalizedSets.size());
+
     setsSqliteRepository.saveAll(nomalizedSets);
     quickSearchCardsSqliteRepository.saveAll(normalizedCards);
     quickSearchCardsFtsSqliteRepository.saveAll(ftsCards);
+    log.info("Data import completed successfully.");
 
   }
 
   private List<TCGWatcherSetModel> convertDexSetsToTCGWatcherSets(Map<String, DexSeriesData> dexSeriesDataMap) {
+    log.debug("Converting Dex sets to TCGWatcher sets...");
 
     // iterate all series and their sets and convert to TCGWatcherSetModel
     List<TCGWatcherSetModel> result = new ArrayList<>();
@@ -184,10 +193,12 @@ public class TCGMapperService {
       }
     }
 
+    log.debug("Converted {} sets.", result.size());
     return result;
   }
 
   private List<TCGWatcherCardModel> convertDexCardsToTCGWatcherCards(Map<String, DexSeriesData> dexSeriesDataMap) {
+    log.debug("Converting Dex cards to TCGWatcher cards...");
 
     List<TCGWatcherCardModel> result = new ArrayList<>();
     if (dexSeriesDataMap == null)
@@ -209,7 +220,8 @@ public class TCGMapperService {
           String cmProductId = thirdParty.getOrDefault("cardmarket", "");
           String tcgpId = thirdParty.getOrDefault("tcgplayer", "");
           String cmCode = readCardmarketCodeFromCSVByProductId(cmProductId); // needs to read from the csv
-
+          if (cmCode != null)
+            log.debug("Found Cardmarket code {} for product ID {}", cmCode, cmProductId);
           var model = TCGWatcherCardModel.builder()
               .id(card.id())
               .names(names)
@@ -220,11 +232,13 @@ public class TCGMapperService {
               .cmCode(cmCode != null ? cmCode : "")
               .build();
 
+          log.debug("Created new card: {}", model);
           result.add(model);
         }
       }
     }
 
+    log.debug("Converted {} cards.", result.size());
     return result;
   }
 
@@ -242,11 +256,13 @@ public class TCGMapperService {
   private synchronized void ensureCmCsvLoaded() {
     if (cmProductIdToCodeCache != null)
       return;
+    log.info("Loading Cardmarket CSV from: {}", csvPath);
     Map<String, String> map = new ConcurrentHashMap<>();
 
     InputStream is = getClass().getClassLoader().getResourceAsStream(csvPath);
     if (is == null) {
       // resource not present
+      log.warn("Cardmarket CSV resource not found at: {}", csvPath);
       cmProductIdToCodeCache = map;
       return;
     }
@@ -296,6 +312,7 @@ public class TCGMapperService {
     }
 
     cmProductIdToCodeCache = map;
+    log.info("Loaded {} Cardmarket product ID mappings.", map.size());
   }
 
   private static String stripQuotes(String s) {
@@ -319,6 +336,7 @@ public class TCGMapperService {
     pokemonSeriesEntity.setNameDe(series.getNames().getOrDefault("de", ""));
     pokemonSeriesEntity.setNameEn(series.getNames().getOrDefault("en", ""));
     pokemonSeriesEntity.setNameFr(series.getNames().getOrDefault("fr", ""));
+    log.debug("Creating new series: {} ({})", series.getId(), series.getNames().get("en"));
     seriesSqlRepository.save(pokemonSeriesEntity);
     return pokemonSeriesEntity;
   }
