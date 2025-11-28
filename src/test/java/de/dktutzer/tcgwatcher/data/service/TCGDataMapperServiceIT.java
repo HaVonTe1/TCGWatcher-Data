@@ -15,24 +15,15 @@ class TCGDataMapperServiceIT {
   @Autowired
   private TCGMapperService tcgMapperService;
 
-  @Test
-  @DisplayName("Testing reading sources and writing to json")
-  void testRead() throws IOException {
-    tcgMapperService.readFromSourceAndWriteToJson();
-  }
+
 
   @Test
   @DisplayName("Testing reading the prepared json files and writing it to sqlite")
   void testDB() throws IOException {
 
-    tcgMapperService.readFromJsonAndWriteToSqlite();
+    tcgMapperService.readFromFilesAndWriteToSqlite();
 
   }
 
-  @Test
-  @DisplayName("Testing the extraction of the cardmarket_id from the prices.pokemontcg.io api")
-  void testGetCmIdViaTcgApi() throws IOException {
 
-    tcgMapperService.getCardmarketIdFromPokemonApiById("https://prices.pokemontcg.io/cardmarket/swsh3-174");
-  }
 }
